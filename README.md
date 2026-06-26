@@ -75,6 +75,22 @@ cargo build --release
 # 产物 target/release/agnes-studio.exe
 ```
 
+### 构建安装包（Inno Setup）
+
+`build.ps1` 调用 ISCC 将 exe 打包为 Windows 安装程序，包含开始菜单快捷方式、桌面图标和卸载入口。
+
+1. 安装 [Inno Setup 6](https://jrsoftware.org/isinfo.php)
+2. 确保 `ISCC.exe` 所在目录在 PATH 中，或在 `build.ps1` 的 `$candidates` 列表里补上你的安装路径
+3. 运行打包脚本：
+
+```powershell
+.\build.ps1
+```
+
+产出的安装包位于 `dist\AgnesStudio-Setup-x.y.z.exe`。
+
+> 管理员权限用户运行安装程序时，会安装到 `C:\Program Files\AgnesStudio\`；普通用户也可安装到用户目录。
+
 ## 发布新版本
 
 1. 修改 `Cargo.toml` 里的 `version`，如 `"0.1.0"` → `"0.2.0"`
