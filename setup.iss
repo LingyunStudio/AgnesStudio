@@ -53,8 +53,57 @@ Name: "{autodesktop}\AgnesStudio"; Filename: "{app}\AgnesStudio.exe"; Tasks: des
 Filename: "{app}\AgnesStudio.exe"; Description: "{cm:LaunchProgram,AgnesStudio}"; Flags: nowait postinstall
 
 [Code]
-// 检测是否已安装过旧版本（升级场景）
+function IsWebView2Installed: Boolean;
+var
+  RegKey: string;
+begin
+  Result := False;
+  // Evergreen WebView2 Runtime 注册表位置
+  RegKey := 'SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
+  if RegKeyExists(HKLM, RegKey) then
+  begin
+    Result := True;
+    Exit;
+  end;
+  // 备选: per-user 安装
+  if RegKeyExists(HKCU, RegKey) then
+  begin
+    Result := True;
+    Exit;
+  end;
+end;
+
 function InitializeSetup: Boolean;
 begin
   Result := True;
+end;
+
+function InitializeUninstall: Boolean;
+begin
+  Result := True;
+end;
+
+// 安装完成后检查 WebView2，缺失则通过 PowerShell 下载并静默安装
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+  PsCmd: string;
+begin
+  if CurStep = ssPostInstall then
+  begin
+    if not IsWebView2Installed then
+    begin
+      PsCmd := '-NoProfile -ExecutionPolicy Bypass -Command "& {' +
+        '$out = \"$env:TEMP\MicrosoftEdgeWebview2Setup.exe\";' +
+        'Invoke-WebRequest -Uri ''https://go.microsoft.com/fwlink/p/?LinkId=2124703'' -OutFile $out;' +
+        'Start-Process -FilePath $out -ArgumentList ''/silent /install'' -Wait -NoNewWindow' +
+        '}"';
+      Exec('powershell.exe', PsCmd, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    end;
+  end;
+end;
+
+function NeedRestart: Boolean;
+begin
+  Result := False;
 end;
