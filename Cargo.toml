@@ -1,0 +1,25 @@
+[package]
+name = "agnes-studio"
+version = "0.1.0"
+edition = "2021"
+authors = ["AgnesStudio"]
+description = "AgnesStudio — Agnes Image/Video 桌面客户端"
+repository = "https://github.com/LingyunStudio/AgnesStudio"
+
+[dependencies]
+dioxus = { version = "0.6", features = ["desktop"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "5"
+rfd = "0.15"
+base64 = "0.22"
+futures-util = "0.3"
+
+[profile.release]
+opt-level = 2
+lto = "thin"
+strip = true
+codegen-units = 1

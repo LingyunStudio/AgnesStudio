@@ -1,0 +1,10 @@
+# 构建产物
+/target/
+/dist/
+
+# 临时文件
+*.tmp
+temp_comp.txt
+
+# 需求文档
+需求文档.md
