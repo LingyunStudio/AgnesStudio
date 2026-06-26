@@ -21,6 +21,6 @@ pulldown-cmark = "0.12"
 
 [profile.release]
 opt-level = 2
-lto = "thin"
+lto = true
 strip = true
 codegen-units = 1
