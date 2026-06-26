@@ -186,7 +186,6 @@ pub fn run_installer_and_exit(setup_path: &Path) -> ! {
             "/CLOSEAPPLICATIONS",
             "/RESTARTAPPLICATIONS",
             "/NOCANCEL",
-            "/NORESTART",
             "/SP-",
         ])
         .spawn();

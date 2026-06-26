@@ -140,12 +140,22 @@ fn do_save(s:&mut AppState){
     let path=dir.join(&fname);
     match std::fs::write(&path,&raw){Ok(_)=>s.notice(format!("已保存：{}",path.display()),"#2eb478"),Err(e)=>s.notice(format!("保存失败：{e}"),"#e14646")}
 }
-#[cfg(windows)]fn open_url(url:&str){
+
+fn render_markdown(md: &str) -> String {
+    let parser = pulldown_cmark::Parser::new(md);
+    let mut html = String::new();
+    pulldown_cmark::html::push_html(&mut html, parser);
+    html
+}
+
+fn open_url(url:&str){
+    #[cfg(windows)]{
     use std::os::windows::process::CommandExt;
     // CREATE_NO_WINDOW = 0x08000000，避免 cmd 弹出空白控制台窗口
     let _=std::process::Command::new("cmd").args(["/C","start","",url]).creation_flags(0x0800_0000).spawn();
+    }
+    #[cfg(not(windows))]{let _=std::process::Command::new("xdg-open").arg(url).spawn();}
 }
-#[cfg(not(windows))]fn open_url(url:&str){let _=std::process::Command::new("xdg-open").arg(url).spawn();}
 
 // 通过 dioxus 资源协议提供视频字节，支持 Range 请求以供 <video> 流式播放/拖动进度
 fn serve_video_asset(
@@ -907,6 +917,7 @@ fn UpdateDialog(st:Signal<AppState>)->Element{
     let has_setup=info.setup_url.is_some();
     let cur=updater::CURRENT_VERSION.to_string();
     let notes_text=if info.notes.trim().is_empty(){"（此版本未提供更新说明）".to_string()}else{info.notes.clone()};
+    let notes_html=render_markdown(&notes_text);
     let new_ver=info.version.clone();
     let html=info.html_url.clone();
 
@@ -920,8 +931,8 @@ fn UpdateDialog(st:Signal<AppState>)->Element{
                     span{style:"font-size:18px;font-weight:700;color:#1c1e2e;","发现新版本"}
                 }
                 span{style:"font-size:13px;color:#828698;margin-bottom:14px;","v{cur}  →  v{new_ver}"}
-                div{style:"flex:1;overflow:auto;background:#f8f9fd;border:1px solid #e8eaf2;border-radius:10px;padding:12px;margin-bottom:16px;",
-                    span{style:"font-size:13px;color:#1c1e2e;white-space:pre-wrap;word-break:break-word;","{notes_text}"}
+                div{style:"flex:1;overflow:auto;background:#f8f9fd;border:1px solid #e8eaf2;border-radius:10px;padding:12px;margin-bottom:16px;font-size:13px;color:#1c1e2e;",
+                    dangerous_inner_html:"{notes_html}"
                 }
                 if!err.is_empty(){
                     div{style:"font-size:12.5px;color:#e14646;margin-bottom:10px;","{err}"}

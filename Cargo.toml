@@ -1,6 +1,6 @@
 [package]
 name = "agnes-studio"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["AgnesStudio"]
 description = "AgnesStudio — Agnes Image/Video 桌面客户端"
@@ -17,6 +17,7 @@ dirs = "5"
 rfd = "0.15"
 base64 = "0.22"
 futures-util = "0.3"
+pulldown-cmark = "0.12"
 
 [profile.release]
 opt-level = 2

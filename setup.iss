@@ -50,7 +50,7 @@ Name: "{group}\{cm:UninstallProgram,AgnesStudio}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\AgnesStudio"; Filename: "{app}\AgnesStudio.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\AgnesStudio.exe"; Description: "{cm:LaunchProgram,AgnesStudio}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\AgnesStudio.exe"; Description: "{cm:LaunchProgram,AgnesStudio}"; Flags: nowait postinstall
 
 [Code]
 // 检测是否已安装过旧版本（升级场景）
