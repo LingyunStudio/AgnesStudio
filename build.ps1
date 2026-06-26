@@ -15,14 +15,23 @@ Write-Host "Build output: $exePath ($((Get-Item $exePath).Length) bytes)" -Foreg
 
 $iscc = $null
 $candidates = @(
-    "D:\InnoSetup6\ISCC.exe",
     "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
-    "C:\Program Files\Inno Setup 6\ISCC.exe",
-    "C:\Program Files (x86)\Inno Setup 5\ISCC.exe"
+    "C:\Program Files\Inno Setup 6\ISCC.exe"
 )
+# Set ISCC_HOME env var if Inno Setup is installed elsewhere
+if ($env:ISCC_HOME) {
+    $candidates = @($env:ISCC_HOME + "\\ISCC.exe") + $candidates
+}
 foreach ($c in $candidates) { if (Test-Path $c) { $iscc = $c; break } }
 if (-not $iscc) { $found = Get-Command ISCC.exe -ErrorAction SilentlyContinue; if ($found) { $iscc = $found.Source } }
-if (-not $iscc) { Write-Error "ISCC.exe not found. Please install Inno Setup: https://jrsoftware.org/isinfo.php"; exit 1 }
+if (-not $iscc) {
+    Write-Warning "ISCC.exe not found. Install Inno Setup 6 from:"
+    Write-Warning "  https://jrsoftware.org/isinfo.php"
+    Write-Warning ""
+    Write-Warning "If installed elsewhere, set ISCC_HOME or run manually:"
+    Write-Warning "  & 'YOUR_PATH\\ISCC.exe' /DMyAppVersion='$version' setup.iss"
+    exit 1
+}
 Write-Host "Inno Setup: $iscc" -ForegroundColor Green
 
 if (-not (Test-Path "dist")) { New-Item -ItemType Directory -Path "dist" | Out-Null }
