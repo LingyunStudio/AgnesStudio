@@ -3,7 +3,7 @@
 <p align="center">
   <img src="assets/icon.png" width="120" alt="AgnesStudio Logo" />
 </p>
-**AgnesStudio** 是一款大小仅有不到 6MB，基于 Rust + [Dioxus](https://dioxuslabs.com/) 构建的桌面客户端，为 [Agnes AI](https://agnes-ai.com/) 的图像与视频生成模型提供精美的图形化操作界面。
+<b><span style="color:#e74c3c">AgnesStudio</span></b> 是一款大小仅有不到 6MB，基于 Rust + [Dioxus](https://dioxuslabs.com/) 构建的桌面客户端，为 [Agnes AI](https://agnes-ai.com/) 的图像与视频生成模型提供精美的图形化操作界面。
 
 - 🖼 **图像生成**：支持 Agnes Image 2.1 Flash / 2.0 Flash，文生图与图生图
 - 🎬 **视频生成**：支持 Agnes Video V2.0，文生视频、图生视频、多图视频、关键帧动画
