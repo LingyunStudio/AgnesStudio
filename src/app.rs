@@ -1,3 +1,4 @@
+#![allow(non_snake_case)]
 use base64::Engine;
 use dioxus::prelude::*;
 use std::cmp;
@@ -294,7 +295,7 @@ fn is_valid_mp4(b:&[u8])->bool{
 impl AppState{fn notice(&mut self,t:String,c:&str){self.notice_text=t;self.notice_color=c.to_string();}}
 
 // 手动触发检查更新（设置卡片按钮）：检查中显示状态，失败显示错误
-fn check_update_manual(mut st:Signal<AppState>){
+fn CheckUpdate(mut st:Signal<AppState>){
     if st.read().update_checking{return;}
     st.write().update_checking=true;
     st.write().update_error.clear();
@@ -309,7 +310,7 @@ fn check_update_manual(mut st:Signal<AppState>){
 }
 
 // 开始下载并安装更新：后台下载 setup.exe，进度通过 bg_tx 回传
-fn start_update(mut st:Signal<AppState>){
+fn StartUpdate(mut st:Signal<AppState>){
     let info=match st.read().update_info.clone(){Some(i)=>i,None=>return};
     let url=match info.setup_url.clone(){Some(u)=>u,None=>{ // 无安装包资源，引导浏览器
         open_url(&info.html_url);return;
@@ -718,7 +719,7 @@ fn SettingsBody(st:Signal<AppState>)->Element{
                     span{style:"font-size:12px;color:#7c5cff;","检查中…"}
                 }
                 div{style:"flex:1;"}
-                button{class:"g",onclick:move|_|check_update_manual(st.clone()),
+                button{class:"g",onclick:move|_|CheckUpdate(st.clone()),
                     disabled:st.read().update_checking,
                     if st.read().update_checking{"检查中…"}else{"检查更新"}
                 }
@@ -946,7 +947,7 @@ fn UpdateDialog(st:Signal<AppState>)->Element{
                     button{class:"b2",style:"opacity:0.6;cursor:default;","下载中…"}
                 }
                 if !downloading && has_setup{
-                    button{class:"b2",onclick:move|_|start_update(st.clone()),"立即更新"}
+                    button{class:"b2",onclick:move|_|StartUpdate(st.clone()),"立即更新"}
                 }
                 if !downloading && !has_setup{
                     button{class:"b2",onclick:move|_|open_url(&html),"前往下载"}
