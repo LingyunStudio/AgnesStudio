@@ -114,8 +114,19 @@ fn main() {
     }
 }
 
+fn webview_data_dir() -> std::path::PathBuf {
+    let dir = dirs::data_local_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    dir.join("AgnesStudio").join("webview")
+}
+
 fn run_app() {
-    let mut cfg = Config::new().with_window(WindowBuilder::new().with_title("AgnesStudio"));
+    let data_dir = webview_data_dir();
+    std::fs::create_dir_all(&data_dir).ok();
+
+    let mut cfg = Config::new()
+        .with_window(WindowBuilder::new().with_title("AgnesStudio"))
+        .with_data_directory(data_dir);
+
     if let Some(icon) = build_window_icon() {
         cfg = cfg.with_icon(icon);
     }
