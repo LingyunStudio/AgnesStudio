@@ -67,53 +67,37 @@
 ## 构建与运行
 
 ```bash
-# 开发模式（带调试信息）
+# 开发模式
 cargo run
 
-# 发布构建（优化）
+# 发布构建
 cargo build --release
-# 产物位于 target/release/agnes-studio.exe
+# 产物 target/release/agnes-studio.exe
 ```
 
-## 打包发布（Inno Setup 安装包）
+## 发布新版本
 
-推荐使用 Inno Setup 打包为安装包，支持自动更新所需的静默安装。
+1. 修改 `Cargo.toml` 里的 `version`，如 `"0.1.0"` → `"0.2.0"`
+2. 改代码，`git commit` & `git push`
+3. 运行 `.\build.ps1`，产出 `dist\AgnesStudio-Setup-0.2.0.exe`
+4. 在 GitHub 创建 Release，tag 填 `v0.2.0`，上传该 exe，写 update notes（支持 Markdown）
+5. 旧版用户启动后自动检测到更新
 
-### 一键打包
-
-```powershell
-.\build.ps1
-```
-
-脚本自动完成：解析版本号 → `cargo build --release` → 调 ISCC 编译 → 产出 `dist\AgnesStudio-Setup-x.y.z.exe`
-
-前置条件：已安装 [Inno Setup](https://jrsoftware.org/isinfo.php)。
-
-### 发布到 GitHub Release
-
-1. 创建 Release，tag 设为 `v0.1.0`（带 v 前缀），title 示例：`AgnesStudio v0.1.0`
-2. 上传 `dist\AgnesStudio-Setup-0.1.0.exe` 到该 Release
-3. 填写更新说明（用户将在软件内看到）
-
-> setup.exe 文件名必须以 `AgnesStudio-Setup-` 开头、`.exe` 结尾，才能被自动更新功能识别。
-
----
+> `.\build.ps1` 依赖 [Inno Setup](https://jrsoftware.org/isinfo.php)。
 
 ## 自动更新
 
-软件启动后会自动检查 GitHub 最新 Release。检测到新版本时：
+启动后自动检查 GitHub 最新 Release。检测到新版本时：
 
-1. 顶栏显示「● 有新版本 vX.Y.Z」提示，点击可打开更新弹窗
-2. 也可在「设置」卡片点击「检查更新」手动触发
-3. 点击「立即更新」自动下载 `AgnesStudio-Setup-x.y.z.exe` → 启动 Inno Setup 静默安装 → 自动退出并覆盖安装 → 安装完成后自动重启新版本
+- 顶栏显示「● 有新版本 vX.Y.Z」，点击查看详情（update notes 支持 Markdown 渲染）
+- 点击「立即更新」→ 自动下载安装包 → 静默覆盖安装 → 安装完成后自动启动新版本
+- 也可在「设置」卡片手动「检查更新」
 
-> 更新过程无需用户任何额外操作。需要管理员权限（写入 `Program Files`）。
+> 需管理员权限。无需任何额外操作。
 
----
+## 手动分发（单文件 exe）
 
-## 打包发布（单文件 exe）
-
-AgnesStudio 编译为**完全独立的单文件可执行程序**，无需随 exe 附带任何资源文件，别人拿到 exe 即可直接双击使用。
+AgnesStudio 也可编译为独立的单文件 exe，无需附带任何资源文件。
 
 图标（应用内 logo、窗口标题栏图标、资源管理器 exe 图标）均在编译期内联/嵌入，配置文件首次运行时自动生成在系统目录，图片/视频默认保存到用户「图片」目录。
 
