@@ -100,6 +100,7 @@ struct AppState{
     vduration_index:usize,vframes_custom:i32,vfps_custom:i32,
     vmode:VMode,video_image_urls:Vec<String>,video_url_input:String,
     video_store:Arc<Mutex<HashMap<usize,Arc<Vec<u8>>>>>,
+    reset_token:u32,
     // 自动更新
     update_info:Option<UpdateInfo>,
     update_checking:bool,
@@ -130,6 +131,7 @@ fn set_defaults(s:&mut AppState){
     let sz=s.cfg.last_size.clone();
     if let Some(idx)=SIZE_PRESETS.iter().position(|(_,v)|*v==sz.as_str()){s.size_preset_index=idx;}
     else if let Some((w,h))=sz.split_once('x'){if let(Ok(w),Ok(h))=(w.trim().parse::<i32>(),h.trim().parse::<i32>()){s.custom_w=w.clamp(64,4096);s.custom_h=h.clamp(64,4096);s.size_preset_index=SIZE_PRESETS.len()-1;}}
+    s.reset_token=s.reset_token.wrapping_add(1);
 }
 fn do_save(s:&mut AppState){
     if s.images.is_empty(){return}
@@ -285,6 +287,7 @@ fn set_video_defaults(s:&mut AppState){
     s.vduration_index=s.cfg.video_duration_preset.min(VIDEO_DURATION_PRESETS.len()-1);
     s.vframes_custom=s.cfg.video_num_frames;s.vfps_custom=s.cfg.video_frame_rate;
     s.vmode=match s.cfg.video_mode.as_str(){"image"=>VMode::Image,"multi"=>VMode::Multi,"keyframes"=>VMode::Keyframes,_=>VMode::Text};
+    s.reset_token=s.reset_token.wrapping_add(1);
 }
 
 // 视频字节是否为有效 mp4（4~8 字节含 "ftyp"）
@@ -341,7 +344,7 @@ pub fn App()->Element{
     let(bg_tx,bg_rx)=mpsc::channel::<BgEvent>();
     let bg_rx=Arc::new(Mutex::new(bg_rx));let cfg=config::load();
     let mut init=AppState{cfg,images:vec![],selected:0,loading:false,error:String::new(),notice_text:String::new(),notice_color:String::new(),prompt:String::new(),mode:Mode::Text,out_fmt:OutFmt::Url,model_index:0,size_preset_index:0,custom_w:1024,custom_h:1024,input_src:InputSrc::File,input_url:String::new(),input_file:None,api_key_visible:false,show_popup:false,popup_uri:String::new(),popup_dims:[0,0],popup_zoom:1.0,popup_pan:[0.0,0.0],gen_elapsed:0.0,bg_tx:EventTx(bg_tx),bg_rx,workspace:Workspace::Image,videos:vec![],video_selected:0,video_loading:false,video_error:String::new(),video_elapsed:0.0,video_progress:0.0,video_msg:String::new(),video_job:None,video_prompt:String::new(),video_neg:String::new(),vsize_index:0,vw_custom:1152,vh_custom:768,vduration_index:1,vframes_custom:121,vfps_custom:24,vmode:VMode::Text,video_image_urls:vec![],video_url_input:String::new(),video_store:Arc::new(Mutex::new(HashMap::new())),
-        update_info:None,update_checking:false,update_downloading:false,update_progress:0,update_error:String::new(),show_update_dialog:false};
+        update_info:None,update_checking:false,update_downloading:false,update_progress:0,update_error:String::new(),show_update_dialog:false,reset_token:0};
     set_defaults(&mut init);set_video_defaults(&mut init);let st=use_signal(||init);
 
     {let mut s2=st.clone();use_future(move||async move{loop{let evs={let state=s2.read();let rx=state.bg_rx.clone();let evs=rx.lock().unwrap().try_iter().collect::<Vec<_>>();evs};for ev in evs{let mut s=s2.write();match ev{
@@ -606,7 +609,7 @@ fn SidePanel(st:Signal<AppState>)->Element{
             }
 
             Card{title:"提示词",
-                textarea{class:"ta",placeholder:"描述你想生成或编辑的图像…",value:"{st.read().prompt}",oninput:move|e|st.write().prompt=e.value()}
+                textarea{key:"img-prompt-{st.read().reset_token}",class:"ta",placeholder:"描述你想生成或编辑的图像…",initial_value:"{st.read().prompt}",oninput:move|e|st.write().prompt=e.value()}
             }
 
             if st.read().mode==Mode::Image{InputSection{st:st.clone()}}
@@ -1128,9 +1131,9 @@ fn VideoSidePanel(st:Signal<AppState>)->Element{
             }
 
             Card{title:"提示词",
-                textarea{class:"ta",placeholder:"描述视频内容：[主体]+[动作]+[场景]+[镜头运动]+[光线]+[风格]",value:"{st.read().video_prompt}",oninput:move|e|st.write().video_prompt=e.value()}
+                textarea{key:"vid-prompt-{st.read().reset_token}",class:"ta",placeholder:"描述视频内容：[主体]+[动作]+[场景]+[镜头运动]+[光线]+[风格]",initial_value:"{st.read().video_prompt}",oninput:move|e|st.write().video_prompt=e.value()}
                 div{style:"height:6px;"}div{class:"h","反向提示词（可选）"}
-                textarea{class:"ta",style:"min-height:50px;",placeholder:"需要避免的内容…",value:"{st.read().video_neg}",oninput:move|e|st.write().video_neg=e.value()}
+                textarea{key:"vid-neg-{st.read().reset_token}",class:"ta",style:"min-height:50px;",placeholder:"需要避免的内容…",initial_value:"{st.read().video_neg}",oninput:move|e|st.write().video_neg=e.value()}
             }
 
             if st.read().vmode!=VMode::Text{
