@@ -1,6 +1,6 @@
 [package]
 name = "agnes-studio"
-version = "0.2.0"
+version = "0.4.0"
 edition = "2021"
 authors = ["AgnesStudio"]
 description = "AgnesStudio — Agnes Image/Video 桌面客户端"
