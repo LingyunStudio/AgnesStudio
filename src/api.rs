@@ -288,6 +288,8 @@ struct VideoStatusResp {
     #[serde(default)]
     size: Option<String>,
     #[serde(default)]
+    url: Option<String>,
+    #[serde(default)]
     remixed_from_video_id: Option<String>,
     #[serde(default)]
     error: Option<String>,
@@ -422,7 +424,10 @@ pub async fn fetch_video_status(
         "completed" => {
             out.done = true;
             out.progress = 100.0;
-            out.video_url = parsed.remixed_from_video_id.filter(|s| !s.is_empty());
+            out.video_url = parsed
+                .url
+                .or(parsed.remixed_from_video_id)
+                .filter(|s| !s.is_empty());
         }
         "failed" => {
             out.failed = true;
