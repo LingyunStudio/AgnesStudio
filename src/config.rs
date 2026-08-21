@@ -27,6 +27,24 @@ pub struct Config {
     pub video_duration_preset: usize,
     #[serde(default)]
     pub video_mode: String, // "text" | "image" | "multi" | "keyframes"
+    // 图像 2.1 Flash 档位式尺寸：size 档位 + 宽高比
+    #[serde(default)]
+    pub image_tier: String,  // "1K" | "2K" | "3K" | "4K"，空 = 未设置
+    #[serde(default)]
+    pub image_ratio: String, // "1:1" 等，空 = 未设置
+    // 视频模型与 Agnes Video 2.5 参数
+    #[serde(default)]
+    pub video_model: String, // "agnes-video-2.5" | "agnes-video-v2.0"，空 = 默认 2.5
+    #[serde(default)]
+    pub video25_mode: String, // "text" | "keyframe" | "reference"
+    #[serde(default)]
+    pub video25_seconds: String, // "4"–"12"
+    #[serde(default)]
+    pub video25_ar: String, // "16:9" 等
+    #[serde(default)]
+    pub video25_first_frame: String,
+    #[serde(default)]
+    pub video25_last_frame: String,
 }
 
 impl Default for Config {
@@ -52,6 +70,14 @@ impl Default for Config {
             video_frame_rate: 24,
             video_duration_preset: 1,
             video_mode: "text".to_string(),
+            image_tier: "1K".to_string(),
+            image_ratio: "1:1".to_string(),
+            video_model: "agnes-video-2.5".to_string(),
+            video25_mode: "text".to_string(),
+            video25_seconds: "5".to_string(),
+            video25_ar: "16:9".to_string(),
+            video25_first_frame: String::new(),
+            video25_last_frame: String::new(),
         }
     }
 }

@@ -11,6 +11,8 @@ pub struct GenParams {
     pub model: String,
     pub prompt: String,
     pub size: String,
+    /// 宽高比（仅 2.1 Flash 支持，配合档位式 size 如 "2K"）：如 "16:9"
+    pub ratio: Option<String>,
     /// None = 文生图；Some(uri) = 图生图（公网 URL 或 data:image/...;base64,... ）
     pub input_image: Option<String>,
     /// "url" 或 "b64_json"
@@ -34,6 +36,8 @@ struct Request {
     model: String,
     prompt: String,
     size: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ratio: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     return_base64: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -61,6 +65,7 @@ fn build_body(p: &GenParams) -> Request {
             model: p.model.clone(),
             prompt: p.prompt.clone(),
             size: p.size.clone(),
+            ratio: p.ratio.clone(),
             return_base64: Some(true),
             extra_body: None,
         };
@@ -79,6 +84,7 @@ fn build_body(p: &GenParams) -> Request {
         model: p.model.clone(),
         prompt: p.prompt.clone(),
         size: p.size.clone(),
+        ratio: p.ratio.clone(),
         return_base64: None,
         extra_body: Some(extra),
     }
@@ -148,7 +154,8 @@ pub async fn generate(p: GenParams) -> Result<GenResult, String> {
 
 // ── 视频生成（异步任务流程）──────────────────────────────────────────────────────
 
-const VIDEO_MODEL: &str = "agnes-video-v2.0";
+pub const MODEL_VIDEO_V20: &str = "agnes-video-v2.0";
+pub const MODEL_VIDEO_V25: &str = "agnes-video-2.5";
 
 /// 展开错误原因链，让 reqwest 顶层 "error sending request for url" 之外的
 /// 真正原因（超时 / 连接重置 / DNS 等）可见。
@@ -221,18 +228,52 @@ async fn send_retry(
     ))
 }
 
+/// Agnes Video 2.5 的生成模式
+#[derive(Clone, Copy, PartialEq)]
+pub enum V25Mode {
+    Text,
+    Keyframe,
+    Reference,
+}
+
+/// 两代视频模型的请求参数。V2.0 走 width/height/num_frames/frame_rate；
+/// 2.5 走 mode/seconds/size=720P/aspect_ratio，且媒体字段随模式变化。
+pub enum VideoKind {
+    V20 {
+        negative_prompt: String,
+        width: i32,
+        height: i32,
+        num_frames: i32,
+        frame_rate: i32,
+        seed: Option<i64>,
+        /// 输入图片 URL 列表：空=文生视频；1张=图生视频；多张=多图/关键帧
+        images: Vec<String>,
+        keyframes: bool,
+    },
+    V25 {
+        mode: V25Mode,
+        /// 时长 "4"–"12"（API 要求字符串）
+        seconds: String,
+        /// 画幅比例，如 "16:9"
+        aspect_ratio: String,
+        seed: Option<i64>,
+        /// 首帧图片 URL（keyframe 模式，与 last_frame 至少一个）
+        first_frame: Option<String>,
+        /// 尾帧图片 URL（keyframe 模式）
+        last_frame: Option<String>,
+        /// 参考图片 URL（reference 模式）
+        images: Vec<String>,
+        /// 参考音频 URL（reference 模式）
+        audios: Vec<String>,
+        /// 参考视频 URL（reference 模式，服务端接受对象数组，这里只暴露 URL）
+        videos: Vec<String>,
+    },
+}
+
 pub struct VideoParams {
     pub api_key: String,
     pub prompt: String,
-    pub negative_prompt: String,
-    pub width: i32,
-    pub height: i32,
-    pub num_frames: i32,
-    pub frame_rate: i32,
-    pub seed: Option<i64>,
-    /// 输入图片 URL 列表：空=文生视频；1张=图生视频；多张=多图/关键帧
-    pub images: Vec<String>,
-    pub keyframes: bool,
+    pub kind: VideoKind,
 }
 
 /// 创建任务后返回的标识
@@ -269,9 +310,44 @@ struct VideoRequest {
     extra_body: Option<VideoExtraBody>,
 }
 
+/// 参考视频对象：2.5 的 videos[] 数组元素（start_seconds 默认 0，require_audio 默认 false）
+#[derive(Serialize)]
+struct Video25RefVideo {
+    url: String,
+}
+
+#[derive(Serialize)]
+struct Video25Request {
+    model: String,
+    prompt: String,
+    /// "text" | "keyframe" | "reference"
+    mode: String,
+    seconds: String,
+    /// 当前仅支持 "720P"
+    size: String,
+    aspect_ratio: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seed: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    first_frame: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_frame: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    images: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    audios: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    videos: Vec<Video25RefVideo>,
+}
+
+/// V2.0 响应带 video_id/task_id；2.5 响应只有 id（查询时作为 video_id 使用）
 #[derive(Deserialize)]
 struct VideoCreateResp {
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
     video_id: Option<String>,
+    #[serde(default)]
     task_id: Option<String>,
     #[serde(default)]
     seconds: Option<String>,
@@ -290,44 +366,159 @@ struct VideoStatusResp {
     #[serde(default)]
     url: Option<String>,
     #[serde(default)]
-    remixed_from_video_id: Option<String>,
+    metadata: Option<VideoMeta>,
     #[serde(default)]
-    error: Option<String>,
+    remixed_from_video_id: Option<String>,
+    /// V2.0 可能是字符串，2.5 是对象 {"message": "..."}
+    #[serde(default)]
+    error: Option<serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+struct VideoMeta {
+    #[serde(default)]
+    url: Option<String>,
+}
+
+/// 从 error 字段（字符串或对象）提取可读信息
+fn error_message(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Object(m) => m
+            .get("message")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| v.to_string()),
+        _ => v.to_string(),
+    }
 }
 
 fn build_video_body(p: &VideoParams) -> VideoRequest {
-    let multi = p.images.len() > 1 || p.keyframes;
+    let (negative_prompt, width, height, num_frames, frame_rate, seed, images, keyframes) =
+        match &p.kind {
+            VideoKind::V20 {
+                negative_prompt,
+                width,
+                height,
+                num_frames,
+                frame_rate,
+                seed,
+                images,
+                keyframes,
+            } => (
+                negative_prompt.clone(),
+                *width,
+                *height,
+                *num_frames,
+                *frame_rate,
+                *seed,
+                images.clone(),
+                *keyframes,
+            ),
+            VideoKind::V25 { .. } => unreachable!("V2.0 请求体不应由 V25 参数构建"),
+        };
+    let multi = images.len() > 1 || keyframes;
     let (top_image, extra) = if multi {
         // 多图 / 关键帧：图片放进 extra_body.image，关键帧再设 extra_body.mode
         (
             None,
             Some(VideoExtraBody {
-                image: if p.images.is_empty() { None } else { Some(p.images.clone()) },
-                mode: if p.keyframes { Some("keyframes".to_string()) } else { None },
+                image: if images.is_empty() { None } else { Some(images.clone()) },
+                mode: if keyframes { Some("keyframes".to_string()) } else { None },
             }),
         )
-    } else if p.images.len() == 1 {
+    } else if images.len() == 1 {
         // 单图图生视频：image 放顶层（API 要求字符串，非数组）
-        (Some(p.images[0].clone()), None)
+        (Some(images[0].clone()), None)
     } else {
         (None, None)
     };
 
     VideoRequest {
-        model: VIDEO_MODEL.to_string(),
+        model: MODEL_VIDEO_V20.to_string(),
         prompt: p.prompt.clone(),
-        width: p.width,
-        height: p.height,
-        num_frames: p.num_frames,
-        frame_rate: p.frame_rate,
-        negative_prompt: if p.negative_prompt.trim().is_empty() {
+        width,
+        height,
+        num_frames,
+        frame_rate,
+        negative_prompt: if negative_prompt.trim().is_empty() {
             None
         } else {
-            Some(p.negative_prompt.clone())
+            Some(negative_prompt)
         },
-        seed: p.seed,
+        seed,
         image: top_image,
         extra_body: extra,
+    }
+}
+
+fn build_video25_body(p: &VideoParams) -> Video25Request {
+    let (
+        mode,
+        seconds,
+        aspect_ratio,
+        seed,
+        first_frame,
+        last_frame,
+        images,
+        audios,
+        videos,
+    ) = match &p.kind {
+        VideoKind::V25 {
+            mode,
+            seconds,
+            aspect_ratio,
+            seed,
+            first_frame,
+            last_frame,
+            images,
+            audios,
+            videos,
+        } => (
+            *mode,
+            seconds.clone(),
+            aspect_ratio.clone(),
+            *seed,
+            first_frame.clone(),
+            last_frame.clone(),
+            images.clone(),
+            audios.clone(),
+            videos.clone(),
+        ),
+        VideoKind::V20 { .. } => unreachable!("V2.5 请求体不应由 V20 参数构建"),
+    };
+    Video25Request {
+        model: MODEL_VIDEO_V25.to_string(),
+        prompt: p.prompt.clone(),
+        mode: match mode {
+            V25Mode::Text => "text",
+            V25Mode::Keyframe => "keyframe",
+            V25Mode::Reference => "reference",
+        }
+        .to_string(),
+        seconds,
+        size: "720P".to_string(),
+        aspect_ratio,
+        seed,
+        // text 模式禁止携带媒体字段；skip_serializing_if 已保证空值不序列化
+        first_frame: first_frame.filter(|s| !s.trim().is_empty()),
+        last_frame: last_frame.filter(|s| !s.trim().is_empty()),
+        images: images
+            .iter()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect(),
+        audios: audios
+            .iter()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect(),
+        videos: videos
+            .iter()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .map(|url| Video25RefVideo { url })
+            .collect(),
     }
 }
 
@@ -338,8 +529,11 @@ pub async fn create_video_task(p: &VideoParams) -> Result<VideoTask, String> {
     if p.prompt.trim().is_empty() {
         return Err("提示词不能为空。".to_string());
     }
-    let body = serde_json::to_string(&build_video_body(p))
-        .map_err(|e| format!("序列化请求失败：{e}"))?;
+    let body = match &p.kind {
+        VideoKind::V20 { .. } => serde_json::to_string(&build_video_body(p)),
+        VideoKind::V25 { .. } => serde_json::to_string(&build_video25_body(p)),
+    }
+    .map_err(|e| format!("序列化请求失败：{e}"))?;
     let resp = send_retry(
         VIDEO_CREATE,
         reqwest::Method::POST,
@@ -361,11 +555,21 @@ pub async fn create_video_task(p: &VideoParams) -> Result<VideoTask, String> {
     let parsed: VideoCreateResp =
         serde_json::from_str(&text).map_err(|e| format!("解析响应失败：{e}\n原始：{text}"))?;
 
+    // V2.0：video_id + task_id；2.5：仅 id。统一取第一个非空值。
     let video_id = parsed
         .video_id
+        .as_deref()
         .filter(|s| !s.is_empty())
+        .or(parsed.id.as_deref().filter(|s| !s.is_empty()))
+        .map(|s| s.to_string())
         .ok_or_else(|| format!("响应中缺少 video_id。\n原始：{text}"))?;
-    let task_id = parsed.task_id.unwrap_or_default();
+    let task_id = parsed
+        .task_id
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .or(parsed.id.as_deref().filter(|s| !s.is_empty()))
+        .map(|s| s.to_string())
+        .unwrap_or_default();
     Ok(VideoTask {
         video_id,
         task_id,
@@ -389,15 +593,13 @@ pub async fn fetch_video_status(
     api_key: &str,
     video_id: &str,
     task_id: &str,
+    model: &str,
 ) -> Result<VideoStatus, String> {
-    // 优先用 video_id 查询；video_id 失败回退 task_id
-    let (url, use_task) = if !video_id.is_empty() {
-        (
-            format!("{VIDEO_RESULT}?video_id={video_id}&model_name={VIDEO_MODEL}"),
-            false,
-        )
+    // 优先用 video_id 查询（model_name 显式指定模型）；video_id 失败回退 task_id
+    let url = if !video_id.is_empty() {
+        format!("{VIDEO_RESULT}?video_id={video_id}&model_name={model}")
     } else {
-        (format!("{VIDEO_CREATE}/{task_id}"), true)
+        format!("{VIDEO_CREATE}/{task_id}")
     };
 
     let resp = send_retry(&url, reqwest::Method::GET, api_key, None, 3, Duration::from_secs(60))
@@ -424,14 +626,21 @@ pub async fn fetch_video_status(
         "completed" => {
             out.done = true;
             out.progress = 100.0;
+            // 2.5 在顶层 url；V2.0 文档写 metadata.url（实际接口为顶层 url）
             out.video_url = parsed
                 .url
+                .or(parsed.metadata.and_then(|m| m.url))
                 .or(parsed.remixed_from_video_id)
                 .filter(|s| !s.is_empty());
         }
         "failed" => {
             out.failed = true;
-            out.message = parsed.error.unwrap_or_else(|| "生成失败".to_string());
+            out.message = parsed
+                .error
+                .as_ref()
+                .map(|e| error_message(e))
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "生成失败".to_string());
         }
         _ => {
             out.message = match st.as_str() {
@@ -441,17 +650,24 @@ pub async fn fetch_video_status(
             };
         }
     }
-    let _ = use_task;
     Ok(out)
 }
 
-/// 下载视频字节
 /// 下载视频字节。视频 URL 通常是已签名的公开链接（storage.googleapis.com 等），
 /// 浏览器能直接打开 = 无需鉴权。带 Authorization 头反而可能让某些 CDN/存储
-/// 返回错误页（HTML）而非 mp4，导致写出的文件损坏无法播放，因此不带鉴权头。
-pub async fn download_video(_api_key: &str, url: &str) -> Result<Vec<u8>, String> {
-    let resp = send_retry(url, reqwest::Method::GET, "", None, 3, Duration::from_secs(600))
+/// 返回错误页（HTML）而非 mp4，导致写出的文件损坏无法播放，因此先不带鉴权头；
+/// 仅当返回 401/403 时才带鉴权重试一次。
+pub async fn download_video(api_key: &str, url: &str) -> Result<Vec<u8>, String> {
+    let mut resp = send_retry(url, reqwest::Method::GET, "", None, 3, Duration::from_secs(600))
         .await?;
+    if (resp.status() == reqwest::StatusCode::UNAUTHORIZED
+        || resp.status() == reqwest::StatusCode::FORBIDDEN)
+        && !api_key.trim().is_empty()
+    {
+        resp =
+            send_retry(url, reqwest::Method::GET, api_key, None, 3, Duration::from_secs(600))
+                .await?;
+    }
     let status = resp.status();
     // 检查 Content-Type，避免把 HTML 错误页当视频存下来
     let ctype = resp
