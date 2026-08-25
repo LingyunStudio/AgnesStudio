@@ -156,6 +156,7 @@ pub async fn generate(p: GenParams) -> Result<GenResult, String> {
 
 pub const MODEL_VIDEO_V20: &str = "agnes-video-v2.0";
 pub const MODEL_VIDEO_V25: &str = "agnes-video-2.5";
+pub const MODEL_VIDEO_V25_FLASH: &str = "agnes-video-2.5-flash";
 
 /// 展开错误原因链，让 reqwest 顶层 "error sending request for url" 之外的
 /// 真正原因（超时 / 连接重置 / DNS 等）可见。
@@ -261,12 +262,14 @@ pub enum VideoKind {
         first_frame: Option<String>,
         /// 尾帧图片 URL（keyframe 模式）
         last_frame: Option<String>,
-        /// 参考图片 URL（reference 模式）
+        /// 参考图片 URL（reference 模式；Flash 最多 5 张）
         images: Vec<String>,
         /// 参考音频 URL（reference 模式）
         audios: Vec<String>,
-        /// 参考视频 URL（reference 模式，服务端接受对象数组，这里只暴露 URL）
+        /// 参考视频 URL（reference 模式；Flash 不支持，序列化时跳过）
         videos: Vec<String>,
+        /// true = agnes-video-2.5-flash（图片最多 5 张、不支持视频参考）
+        flash: bool,
     },
 }
 
@@ -463,6 +466,7 @@ fn build_video25_body(p: &VideoParams) -> Video25Request {
         images,
         audios,
         videos,
+        flash,
     ) = match &p.kind {
         VideoKind::V25 {
             mode,
@@ -474,6 +478,7 @@ fn build_video25_body(p: &VideoParams) -> Video25Request {
             images,
             audios,
             videos,
+            flash,
         } => (
             *mode,
             seconds.clone(),
@@ -484,11 +489,17 @@ fn build_video25_body(p: &VideoParams) -> Video25Request {
             images.clone(),
             audios.clone(),
             videos.clone(),
+            *flash,
         ),
         VideoKind::V20 { .. } => unreachable!("V2.5 请求体不应由 V20 参数构建"),
     };
+    let model = if flash {
+        MODEL_VIDEO_V25_FLASH
+    } else {
+        MODEL_VIDEO_V25
+    };
     Video25Request {
-        model: MODEL_VIDEO_V25.to_string(),
+        model: model.to_string(),
         prompt: p.prompt.clone(),
         mode: match mode {
             V25Mode::Text => "text",
@@ -513,12 +524,17 @@ fn build_video25_body(p: &VideoParams) -> Video25Request {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect(),
-        videos: videos
-            .iter()
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .map(|url| Video25RefVideo { url })
-            .collect(),
+        // Flash 不支持视频参考（传入有效内容返回 400），直接不序列化
+        videos: if flash {
+            vec![]
+        } else {
+            videos
+                .iter()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .map(|url| Video25RefVideo { url })
+                .collect()
+        },
     }
 }
 

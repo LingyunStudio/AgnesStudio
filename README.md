@@ -10,7 +10,7 @@
 <b><span style="color:#e74c3c">AgnesStudio</span></b> 是一款大小仅有不到 6MB，基于 Rust + <a href="https://dioxuslabs.com/">Dioxus</a> 构建的桌面客户端，为 <a href="https://agnes-ai.com/">Agnes AI</a> 的图像与视频生成模型提供精美的图形化操作界面。
 
 - 🖼 **图像生成**：支持 Agnes Image 2.1 Flash / 2.0 Flash，文生图与图生图
-- 🎬 **视频生成**：支持 Agnes Video 2.5（文生视频、首尾帧、图片/音频/视频参考）与 V2.0（文生、图生、多图、关键帧动画）
+- 🎬 **视频生成**：支持 Agnes Video 2.5 Flash / 2.5（文生视频、首尾帧、图片/音频/视频参考）与 V2.0（文生、图生、多图、关键帧动画）
 - 🎨 **精致 GUI**：现代化界面，彩色渐变 logo，流畅交互
 - 💾 **本地配置**：API Key、保存目录等配置保存在本机，重启不丢失
 - 📐 **丰富尺寸**：2.1 Flash 档位式尺寸（1K–4K × 8 种宽高比），2.0 Flash 精确尺寸预设与自定义
@@ -36,7 +36,8 @@
 - 生成结果可直接在软件内预览、放大查看、一键保存到指定目录
 
 ### 视频生成
-- **Agnes Video 2.5**（默认）：文生视频、首尾帧控制、参考生成（图片 / 音频 / 视频，提示词中用 `<Picture 1>` 等占位符）；时长 4–12 秒，六种画幅（21:9 / 16:9 / 4:3 / 1:1 / 3:4 / 9:16），分辨率 720P
+- **Agnes Video 2.5 Flash**（默认，限时免费）：文生视频、首尾帧控制、图片 / 音频参考（图片最多 5 张，不支持视频参考）；时长 4–12 秒，六种画幅（21:9 / 16:9 / 4:3 / 1:1 / 3:4 / 9:16），分辨率 720P
+- **Agnes Video 2.5**：在 Flash 基础上支持视频参考与更多参考图片
 - **Agnes Video V2.0**：文生视频、图生视频、多图视频、关键帧动画；尺寸归档 480p/720p/1080p，时长 / 帧率 / 帧数可调
 - 异步任务机制，自动轮询生成结果并内嵌播放器预览
 - 支持保存为本地 MP4
@@ -203,6 +204,7 @@ AgnesStudio/
 
 - [Agnes Image 2.0 Flash 文档](agnes-image-2.0-flash文档.md)
 - [Agnes Image 2.1 Flash 文档](agnes-image-2.1-flash文档.md)
+- [Agnes Video 2.5 Flash 文档](agnes-video-2.5-flash文档.md)
 - [Agnes Video 2.5 文档](agnes-video-2.5文档.md)
 - [Agnes Video V2.0 文档](agnes-video-v2.0文档.md)
 

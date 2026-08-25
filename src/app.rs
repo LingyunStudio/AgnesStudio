@@ -55,7 +55,8 @@ const VIDEO_DURATION_PRESETS: &[(&str, i32, i32, &str)] = &[
     ("约 18 秒（441 帧）", 441, 24, "18"),
 ];
 const VIDEO_MODELS: &[(&str, &str)] = &[
-    ("Agnes Video 2.5（最新）", "agnes-video-2.5"),
+    ("Agnes Video 2.5 Flash（限时免费）", "agnes-video-2.5-flash"),
+    ("Agnes Video 2.5", "agnes-video-2.5"),
     ("Agnes Video V2.0", "agnes-video-v2.0"),
 ];
 // Video 2.5：画幅比例（size 固定 720P）
@@ -369,7 +370,10 @@ fn set_video_defaults(s:&mut AppState){
 }
 /// 当前选择的视频模型 ID
 fn cur_video_model(s:&AppState)->&'static str{VIDEO_MODELS[s.vmodel_index.min(VIDEO_MODELS.len()-1)].1}
-fn is_video25(s:&AppState)->bool{cur_video_model(s)==api::MODEL_VIDEO_V25}
+/// 是否为 2.5 系模型（2.5 / 2.5 Flash，共用同一套 mode/seconds/aspect_ratio 参数）
+fn is_video25(s:&AppState)->bool{matches!(cur_video_model(s),api::MODEL_VIDEO_V25|api::MODEL_VIDEO_V25_FLASH)}
+/// 是否为 2.5 Flash（图片参考最多 5 张、不支持视频参考）
+fn is_video25_flash(s:&AppState)->bool{cur_video_model(s)==api::MODEL_VIDEO_V25_FLASH}
 
 // 视频字节是否为有效 mp4（4~8 字节含 "ftyp"）
 fn is_valid_mp4(b:&[u8])->bool{
@@ -1156,10 +1160,11 @@ fn on_gen_video(mut st:Signal<AppState>){
     if s.cfg.api_key.trim().is_empty(){s.video_error="未设置 API Key，请先在\"设置\"里填写。".to_string();return}
     if s.video_prompt.trim().is_empty(){s.video_error="提示词不能为空。".to_string();return}
     let model=cur_video_model(&s).to_string();
-    let v25=model==api::MODEL_VIDEO_V25;
+    let v25=model!=api::MODEL_VIDEO_V20;
+    let flash=model==api::MODEL_VIDEO_V25_FLASH;
 
     let kind=if v25{
-        // ── Video 2.5：mode/seconds/aspect_ratio + 模式专属媒体 ──
+        // ── Video 2.5 / 2.5 Flash：mode/seconds/aspect_ratio + 模式专属媒体 ──
         let first=s.v25_first.trim().to_string();
         let last=s.v25_last.trim().to_string();
         let images:Vec<String>=s.v25_images.iter().map(|u|u.trim().to_string()).filter(|u|!u.is_empty()).collect();
@@ -1176,6 +1181,11 @@ fn on_gen_video(mut st:Signal<AppState>){
             }
             V25Mode::Text=>{}
         }
+        // Flash 专属限制：图片参考最多 5 张、不支持视频参考
+        if flash{
+            if images.len()>5{s.video_error="Flash 版参考图片最多 5 张（当前已添加超出，请移除多余的图片）".to_string();return}
+            if !videos.is_empty(){s.video_error="Flash 版不支持视频参考素材，请移除视频或切换到 Agnes Video 2.5".to_string();return}
+        }
         api::VideoKind::V25{
             mode:match s.v25_mode{V25Mode::Text=>api::V25Mode::Text,V25Mode::Keyframe=>api::V25Mode::Keyframe,V25Mode::Reference=>api::V25Mode::Reference},
             seconds:V25_SECONDS[s.v25_seconds_index.min(V25_SECONDS.len()-1)].to_string(),
@@ -1183,7 +1193,7 @@ fn on_gen_video(mut st:Signal<AppState>){
             seed:None,
             first_frame:if first.is_empty(){None}else{Some(first)},
             last_frame:if last.is_empty(){None}else{Some(last)},
-            images,audios,videos,
+            images,audios,videos,flash,
         }
     }else{
         // ── Video V2.0：width/height/num_frames/frame_rate ──
@@ -1259,10 +1269,17 @@ fn VideoSidePanel(st:Signal<AppState>)->Element{
     let v25_auds=st.read().v25_audios.clone();
     let v25_vids=st.read().v25_videos.clone();
     let v25_in=st.read().v25_input.clone();
+    let v25flash=is_video25_flash(&st.read());
     let prompt_ph=if v25m==V25Mode::Reference{
-        "描述视频内容，可用 <Picture 1>、<Audio 1>、<Video 1> 指代参考素材…"
+        if v25flash{"描述视频内容，可用 <Picture 1>、<Audio 1> 指代参考素材…"}
+        else{"描述视频内容，可用 <Picture 1>、<Audio 1>、<Video 1> 指代参考素材…"}
     }else{
         "描述视频内容：[主体与场景]+[动作与变化]+[镜头语言]+[视觉风格]+[声音]"
+    };
+    let ref_hint=if v25flash{
+        "图片 / 音频 URL 需公网可访问；Flash 版图片参考最多 5 张、不支持视频参考；提示词中用 <Picture 1>、<Audio 1> 指代"
+    }else{
+        "图片 / 音频 / 视频 URL 需公网可访问；提示词中用 <Picture 1>、<Audio 1>、<Video 1> 指代"
     };
 
     let mut vmopts:Vec<Element>=Vec::new();
@@ -1359,7 +1376,7 @@ fn VideoSidePanel(st:Signal<AppState>)->Element{
                 }
                 if v25m==V25Mode::Reference{
                     Card{title:"参考素材（Reference）",
-                        div{style:"font-size:11.5px;color:#828698;margin-bottom:4px;","图片 / 音频 / 视频 URL 需公网可访问；提示词中用 <Picture 1>、<Audio 1>、<Video 1> 指代"}
+                        div{style:"font-size:11.5px;color:#828698;margin-bottom:4px;","{ref_hint}"}
                         div{style:"display:flex;gap:8px;",
                             input{class:"ix",style:"flex:1;",placeholder:"https://...",value:"{v25_in}",oninput:move|e|st.write().v25_input=e.value()}
                         }
@@ -1372,10 +1389,12 @@ fn VideoSidePanel(st:Signal<AppState>)->Element{
                                 let v=st.read().v25_input.trim().to_string();
                                 if!v.is_empty(){st.write().v25_audios.push(v);st.write().v25_input.clear();}
                             },"＋ 音频"}
-                            button{class:"g",onclick:move|_|{
-                                let v=st.read().v25_input.trim().to_string();
-                                if!v.is_empty(){st.write().v25_videos.push(v);st.write().v25_input.clear();}
-                            },"＋ 视频"}
+                            if!v25flash{
+                                button{class:"g",onclick:move|_|{
+                                    let v=st.read().v25_input.trim().to_string();
+                                    if!v.is_empty(){st.write().v25_videos.push(v);st.write().v25_input.clear();}
+                                },"＋ 视频"}
+                            }
                         }
                         {v25_items.into_iter()}
                     }

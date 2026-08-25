@@ -34,7 +34,7 @@ pub struct Config {
     pub image_ratio: String, // "1:1" 等，空 = 未设置
     // 视频模型与 Agnes Video 2.5 参数
     #[serde(default)]
-    pub video_model: String, // "agnes-video-2.5" | "agnes-video-v2.0"，空 = 默认 2.5
+    pub video_model: String, // "agnes-video-2.5-flash" | "agnes-video-2.5" | "agnes-video-v2.0"，空 = 默认 2.5 Flash
     #[serde(default)]
     pub video25_mode: String, // "text" | "keyframe" | "reference"
     #[serde(default)]
@@ -72,7 +72,7 @@ impl Default for Config {
             video_mode: "text".to_string(),
             image_tier: "1K".to_string(),
             image_ratio: "1:1".to_string(),
-            video_model: "agnes-video-2.5".to_string(),
+            video_model: "agnes-video-2.5-flash".to_string(),
             video25_mode: "text".to_string(),
             video25_seconds: "5".to_string(),
             video25_ar: "16:9".to_string(),
