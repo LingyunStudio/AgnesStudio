@@ -45,6 +45,11 @@ pub struct Config {
     pub video25_first_frame: String,
     #[serde(default)]
     pub video25_last_frame: String,
+    // 界面偏好
+    #[serde(default)]
+    pub theme: String, // "light" | "dark" | "system"，空 = 跟随系统
+    #[serde(default)]
+    pub lang: String,  // "zh" | "en"，空 = 中文
 }
 
 impl Default for Config {
@@ -78,6 +83,8 @@ impl Default for Config {
             video25_ar: "16:9".to_string(),
             video25_first_frame: String::new(),
             video25_last_frame: String::new(),
+            theme: "system".to_string(),
+            lang: "zh".to_string(),
         }
     }
 }

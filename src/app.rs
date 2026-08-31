@@ -9,19 +9,29 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::api;
 use crate::config;
+use crate::i18n::{self, bi, Bi, Lang};
+use crate::theme::{self, ThemeMode};
 use crate::updater::{self, UpdateInfo};
 
-const MODELS: &[(&str, &str)] = &[
-    ("Agnes Image 2.1 Flash（默认）","agnes-image-2.1-flash"),
-    ("Agnes Image 2.0 Flash","agnes-image-2.0-flash"),
+// (模型 ID, 双语名称)
+const MODELS: &[(&str, Bi)] = &[
+    ("agnes-image-2.1-flash", bi("Agnes Image 2.1 Flash（默认）", "Agnes Image 2.1 Flash (default)")),
+    ("agnes-image-2.0-flash", bi("Agnes Image 2.0 Flash", "Agnes Image 2.0 Flash")),
 ];
-const SIZE_PRESETS: &[(&str, &str)] = &[
-    ("1024 × 1024（方形）","1024x1024"),("1024 × 768（横版）","1024x768"),
-    ("768 × 1024（竖版）","768x1024"),("1280 × 720（HD 横）","1280x720"),
-    ("720 × 1280（HD 竖）","720x1280"),("1920 × 1080（FHD 横）","1920x1080"),
-    ("1080 × 1920（FHD 竖）","1080x1920"),("2048 × 2048（2K 方）","2048x2048"),
-    ("2560 × 1440（2K 横）","2560x1440"),("3840 × 2160（4K 横）","3840x2160"),
-    ("2160 × 3840（4K 竖）","2160x3840"),("自定义",""),
+// (双语名称, 尺寸值)，最后一项为自定义
+const SIZE_PRESETS: &[(Bi, &str)] = &[
+    (bi("1024 × 1024（方形）", "1024 × 1024 (Square)"), "1024x1024"),
+    (bi("1024 × 768（横版）", "1024 × 768 (Landscape)"), "1024x768"),
+    (bi("768 × 1024（竖版）", "768 × 1024 (Portrait)"), "768x1024"),
+    (bi("1280 × 720（HD 横）", "1280 × 720 (HD Landscape)"), "1280x720"),
+    (bi("720 × 1280（HD 竖）", "720 × 1280 (HD Portrait)"), "720x1280"),
+    (bi("1920 × 1080（FHD 横）", "1920 × 1080 (FHD Landscape)"), "1920x1080"),
+    (bi("1080 × 1920（FHD 竖）", "1080 × 1920 (FHD Portrait)"), "1080x1920"),
+    (bi("2048 × 2048（2K 方）", "2048 × 2048 (2K Square)"), "2048x2048"),
+    (bi("2560 × 1440（2K 横）", "2560 × 1440 (2K Landscape)"), "2560x1440"),
+    (bi("3840 × 2160（4K 横）", "3840 × 2160 (4K Landscape)"), "3840x2160"),
+    (bi("2160 × 3840（4K 竖）", "2160 × 3840 (4K Portrait)"), "2160x3840"),
+    (bi("自定义", "Custom"), ""),
 ];
 
 // 2.1 Flash 档位式尺寸：size 档位 × ratio 宽高比（2.0 Flash 仍用精确尺寸）
@@ -39,34 +49,35 @@ const IMG_TIER_SIZES: &[(&str, [&str; 4])] = &[
 ];
 
 // ── 视频 ──────────────────────────────────────────────────────────────────────
-const VIDEO_SIZE_PRESETS: &[(&str, i32, i32)] = &[
-    ("16:9 横版（1280×720）", 1280, 720),
-    ("9:16 竖版（720×1280）", 720, 1280),
-    ("1:1 方形（720×720）", 720, 720),
-    ("4:3 横版（1024×768）", 1024, 768),
-    ("3:4 竖版（768×1024）", 768, 1024),
-    ("自定义", 0, 0),
+// (双语名称, 宽, 高)，最后一项为自定义
+const VIDEO_SIZE_PRESETS: &[(Bi, i32, i32)] = &[
+    (bi("16:9 横版（1280×720）", "16:9 Landscape (1280×720)"), 1280, 720),
+    (bi("9:16 竖版（720×1280）", "9:16 Portrait (720×1280)"), 720, 1280),
+    (bi("1:1 方形（720×720）", "1:1 Square (720×720)"), 720, 720),
+    (bi("4:3 横版（1024×768）", "4:3 Landscape (1024×768)"), 1024, 768),
+    (bi("3:4 竖版（768×1024）", "3:4 Portrait (768×1024)"), 768, 1024),
+    (bi("自定义", "Custom"), 0, 0),
 ];
-// (名称, num_frames, frame_rate, 秒数说明)
-const VIDEO_DURATION_PRESETS: &[(&str, i32, i32, &str)] = &[
-    ("约 3 秒（81 帧）", 81, 24, "3"),
-    ("约 5 秒（121 帧）", 121, 24, "5"),
-    ("约 10 秒（241 帧）", 241, 24, "10"),
-    ("约 18 秒（441 帧）", 441, 24, "18"),
+// (双语名称, num_frames, frame_rate)
+const VIDEO_DURATION_PRESETS: &[(Bi, i32, i32)] = &[
+    (bi("约 3 秒（81 帧）", "~3s (81 frames)"), 81, 24),
+    (bi("约 5 秒（121 帧）", "~5s (121 frames)"), 121, 24),
+    (bi("约 10 秒（241 帧）", "~10s (241 frames)"), 241, 24),
+    (bi("约 18 秒（441 帧）", "~18s (441 frames)"), 441, 24),
 ];
-const VIDEO_MODELS: &[(&str, &str)] = &[
-    ("Agnes Video 2.5 Flash（限时免费）", "agnes-video-2.5-flash"),
-    ("Agnes Video 2.5", "agnes-video-2.5"),
-    ("Agnes Video V2.0", "agnes-video-v2.0"),
+const VIDEO_MODELS: &[(&str, Bi)] = &[
+    ("agnes-video-2.5-flash", bi("Agnes Video 2.5 Flash（限时免费）", "Agnes Video 2.5 Flash (free)")),
+    ("agnes-video-2.5", bi("Agnes Video 2.5", "Agnes Video 2.5")),
+    ("agnes-video-v2.0", bi("Agnes Video V2.0", "Agnes Video V2.0")),
 ];
-// Video 2.5：画幅比例（size 固定 720P）
-const V25_AR_PRESETS: &[(&str, &str)] = &[
-    ("16:9 横版（1280×720，默认）", "16:9"),
-    ("9:16 竖屏（720×1280）", "9:16"),
-    ("21:9 超宽（1680×720）", "21:9"),
-    ("4:3 横版（960×720）", "4:3"),
-    ("1:1 方形（720×720）", "1:1"),
-    ("3:4 竖版（720×960）", "3:4"),
+// Video 2.5：画幅比例（size 固定 720P），(双语名称, ratio)
+const V25_AR_PRESETS: &[(Bi, &str)] = &[
+    (bi("16:9 横版（1280×720，默认）", "16:9 Landscape (1280×720, default)"), "16:9"),
+    (bi("9:16 竖屏（720×1280）", "9:16 Portrait (720×1280)"), "9:16"),
+    (bi("21:9 超宽（1680×720）", "21:9 Ultrawide (1680×720)"), "21:9"),
+    (bi("4:3 横版（960×720）", "4:3 Landscape (960×720)"), "4:3"),
+    (bi("1:1 方形（720×720）", "1:1 Square (720×720)"), "1:1"),
+    (bi("3:4 竖版（720×960）", "3:4 Portrait (720×960)"), "3:4"),
 ];
 // Video 2.5：时长 "4"–"12" 秒（API 要求字符串）
 const V25_SECONDS: &[&str] = &["4", "5", "6", "7", "8", "9", "10", "11", "12"];
@@ -85,6 +96,11 @@ enum Mode{Text,Image}
 enum InputSrc{File,Url}
 #[derive(Clone,PartialEq)]
 enum OutFmt{Url,B64}
+/// 底部通知的语义类型（渲染时映射到主题色）
+#[derive(Clone,Copy,PartialEq)]
+enum NoticeKind{Ok,Err,Info}
+#[derive(Clone,PartialEq)]
+struct Notice{kind:NoticeKind,text:String}
 enum BgEvent{
     ImageDone{bytes:Vec<u8>,url:Option<String>,prompt:String,model:String,size:String},
     Error(String),FilePicked(Option<(String,String)>),DirPicked(Option<String>),
@@ -116,7 +132,7 @@ struct VideoJob{video_id:String,task_id:String,prompt:String,model:String}
 
 struct AppState{
     cfg:config::Config,images:Vec<CachedImage>,selected:usize,loading:bool,
-    error:String,notice_text:String,notice_color:String,
+    error:String,notice:Option<Notice>,
     prompt:String,mode:Mode,out_fmt:OutFmt,model_index:usize,size_preset_index:usize,
     custom_w:i32,custom_h:i32,input_src:InputSrc,input_url:String,input_file:Option<(String,String)>,
     api_key_visible:bool,show_popup:bool,popup_uri:String,popup_dims:[usize;2],
@@ -143,21 +159,27 @@ struct AppState{
     // 自动更新
     update_info:Option<UpdateInfo>,
     update_checking:bool,
+    update_uptodate:bool,
     update_downloading:bool,
     update_progress:u32,
     update_error:String,
     show_update_dialog:bool,
+    // 设置弹窗
+    show_settings:bool,
+    // 界面偏好
+    theme:ThemeMode,
+    lang:Lang,
 }
 
 fn raw_to_data_uri(b:&[u8])->Result<String,String>{
-    let img=image::load_from_memory(b).map_err(|e|format!("解码失败：{e}"))?;
+    let img=image::load_from_memory(b).map_err(|e|format!("decode failed: {e}"))?;
     let rgba=img.to_rgba8();let mut out=std::io::Cursor::new(Vec::new());
-    image::write_buffer_with_format(&mut out,&rgba,img.width(),img.height(),image::ExtendedColorType::Rgba8,image::ImageFormat::Png).map_err(|e|format!("编码失败：{e}"))?;
+    image::write_buffer_with_format(&mut out,&rgba,img.width(),img.height(),image::ExtendedColorType::Rgba8,image::ImageFormat::Png).map_err(|e|format!("encode failed: {e}"))?;
     let b64=base64::engine::general_purpose::STANDARD.encode(out.into_inner());
     Ok(format!("data:image/png;base64,{b64}"))
 }
 /// 当前图片模型是否为 2.1 Flash（支持档位式 size + ratio）
-fn img_is_21(s:&AppState)->bool{MODELS[s.model_index].1=="agnes-image-2.1-flash"}
+fn img_is_21(s:&AppState)->bool{MODELS[s.model_index].0=="agnes-image-2.1-flash"}
 fn resolved_size(s:&AppState)->String{
     if img_is_21(s){
         IMG_TIERS[s.tier_index.min(IMG_TIERS.len()-1)].to_string()
@@ -188,7 +210,8 @@ fn cur_input(s:&AppState)->Option<String>{
 fn set_defaults(s:&mut AppState){
     s.prompt=s.cfg.last_prompt.clone();s.mode=if s.cfg.mode=="image"{Mode::Image}else{Mode::Text};
     s.out_fmt=if s.cfg.output_format=="b64_json"{OutFmt::B64}else{OutFmt::Url};
-    s.model_index=MODELS.iter().position(|(_,id)|*id==s.cfg.model.as_str()).unwrap_or(0);
+    s.model_index=MODELS.iter().position(|(id,_)|*id==s.cfg.model.as_str()).unwrap_or(0);
+    s.theme=ThemeMode::from_cfg(&s.cfg.theme);s.lang=Lang::from_cfg(&s.cfg.lang);
     if img_is_21(s){
         // 优先用保存的档位/比例；没存过则尝试把旧精确尺寸映射到档位表
         let t=IMG_TIERS.iter().position(|t|*t==s.cfg.image_tier.as_str());
@@ -211,9 +234,16 @@ fn do_save(s:&mut AppState){
     let ex=match image::guess_format(&raw).unwrap_or(image::ImageFormat::Png){image::ImageFormat::Png=>"png",image::ImageFormat::Jpeg=>"jpg",image::ImageFormat::WebP=>"webp",image::ImageFormat::Bmp=>"bmp",_=>"png"};
     let secs=SystemTime::now().duration_since(UNIX_EPOCH).map(|d|d.as_secs()).unwrap_or(0);
     let fname=format!("agnes_{secs}.{ex}");let dir=PathBuf::from(&s.cfg.save_dir);
-    if std::fs::create_dir_all(&dir).is_err(){s.notice("创建目录失败".to_string(),"#e14646");return;}
+    if std::fs::create_dir_all(&dir).is_err(){s.notice(NoticeKind::Err,i18n::t(s.lang,"nt.mkdir").to_string());return;}
     let path=dir.join(&fname);
-    match std::fs::write(&path,&raw){Ok(_)=>s.notice(format!("已保存：{}",path.display()),"#2eb478"),Err(e)=>s.notice(format!("保存失败：{e}"),"#e14646")}
+    match std::fs::write(&path,&raw){
+        Ok(_)=>s.notice(NoticeKind::Ok,i18n::tf(s.lang,"nt.saved",&[("p",&path.display().to_string())])),
+        Err(e)=>s.notice(NoticeKind::Err,i18n::tf(s.lang,"nt.savefail",&[("e",&e.to_string())])),
+    }
+}
+/// 通知类型 -> CSS 类
+fn nt_class(k:NoticeKind)->&'static str{
+    match k{NoticeKind::Ok=>"nt nt-ok",NoticeKind::Err=>"nt nt-err",NoticeKind::Info=>"nt nt-info"}
 }
 
 fn render_markdown(md: &str) -> String {
@@ -324,19 +354,22 @@ fn do_save_video(s:&mut AppState){
     let sel=cmp::min(s.video_selected,s.videos.len()-1);
     let entry=s.videos[sel].clone();
     let dir=PathBuf::from(&s.cfg.save_dir);
-    if std::fs::create_dir_all(&dir).is_err(){s.notice("创建目录失败".to_string(),"#e14646");return;}
+    if std::fs::create_dir_all(&dir).is_err(){s.notice(NoticeKind::Err,i18n::t(s.lang,"nt.mkdir").to_string());return;}
 
     // 缓存字节有效则直接写盘
     if is_valid_mp4(&entry.bytes){
         let secs=SystemTime::now().duration_since(UNIX_EPOCH).map(|d|d.as_secs()).unwrap_or(0);
         let path=dir.join(format!("agnes_video_{secs}.mp4"));
-        match std::fs::write(&path,&entry.bytes){Ok(_)=>s.notice(format!("已保存：{}",path.display()),"#2eb478"),Err(e)=>s.notice(format!("保存失败：{e}"),"#e14646")}
+        match std::fs::write(&path,&entry.bytes){
+            Ok(_)=>s.notice(NoticeKind::Ok,i18n::tf(s.lang,"nt.saved",&[("p",&path.display().to_string())])),
+            Err(e)=>s.notice(NoticeKind::Err,i18n::tf(s.lang,"nt.savefail",&[("e",&e.to_string())])),
+        }
         return;
     }
 
     // 缓存字节无效（可能下载时被 CDN 返回错误页）：用远程 URL 重新下载
-    if entry.video_url.is_empty(){s.notice("视频地址为空，无法保存".to_string(),"#e14646");return;}
-    s.notice("本地缓存无效，正在重新下载视频…".to_string(),"#7c5cff");
+    if entry.video_url.is_empty(){s.notice(NoticeKind::Err,i18n::t(s.lang,"nt.novurl").to_string());return;}
+    s.notice(NoticeKind::Info,i18n::t(s.lang,"nt.redl").to_string());
     let url=entry.video_url.clone();let key=s.cfg.api_key.clone();let dir2=dir.clone();let idx=sel;
     let tx=s.bg_tx.0.clone();
     std::thread::spawn(move||{
@@ -354,7 +387,7 @@ fn do_save_video(s:&mut AppState){
 fn set_video_defaults(s:&mut AppState){
     s.video_prompt=s.cfg.last_video_prompt.clone();
     s.video_neg=s.cfg.video_neg_prompt.clone();
-    s.vmodel_index=VIDEO_MODELS.iter().position(|(_,id)|*id==s.cfg.video_model.as_str()).unwrap_or(0);
+    s.vmodel_index=VIDEO_MODELS.iter().position(|(id,_)|*id==s.cfg.video_model.as_str()).unwrap_or(0);
     s.vsize_index=VIDEO_SIZE_PRESETS.iter().position(|(_,w,h)|*w==s.cfg.video_width&&*h==s.cfg.video_height).unwrap_or(0);
     if s.vsize_index==VIDEO_SIZE_PRESETS.len()-1{s.vw_custom=s.cfg.video_width.clamp(64,4096);s.vh_custom=s.cfg.video_height.clamp(64,4096);}
     s.vduration_index=s.cfg.video_duration_preset.min(VIDEO_DURATION_PRESETS.len()-1);
@@ -369,7 +402,7 @@ fn set_video_defaults(s:&mut AppState){
     s.reset_token=s.reset_token.wrapping_add(1);
 }
 /// 当前选择的视频模型 ID
-fn cur_video_model(s:&AppState)->&'static str{VIDEO_MODELS[s.vmodel_index.min(VIDEO_MODELS.len()-1)].1}
+fn cur_video_model(s:&AppState)->&'static str{VIDEO_MODELS[s.vmodel_index.min(VIDEO_MODELS.len()-1)].0}
 /// 是否为 2.5 系模型（2.5 / 2.5 Flash，共用同一套 mode/seconds/aspect_ratio 参数）
 fn is_video25(s:&AppState)->bool{matches!(cur_video_model(s),api::MODEL_VIDEO_V25|api::MODEL_VIDEO_V25_FLASH)}
 /// 是否为 2.5 Flash（图片参考最多 5 张、不支持视频参考）
@@ -380,18 +413,19 @@ fn is_valid_mp4(b:&[u8])->bool{
     b.len()>12&&(&b[4..8]==b"ftyp")&&b[0]==0&&b[1]==0&&b[2]==0
 }
 
-impl AppState{fn notice(&mut self,t:String,c:&str){self.notice_text=t;self.notice_color=c.to_string();}}
+impl AppState{fn notice(&mut self,kind:NoticeKind,text:String){self.notice=Some(Notice{kind,text});}}
 
 // 手动触发检查更新（设置卡片按钮）：检查中显示状态，失败显示错误
 fn CheckUpdate(mut st:Signal<AppState>){
     if st.read().update_checking{return;}
     st.write().update_checking=true;
     st.write().update_error.clear();
+    st.write().update_uptodate=false;
     let tx=st.read().bg_tx.0.clone();
     tokio::spawn(async move{
         match updater::check_latest().await{
             Ok(Some(info))=>{let _=tx.send(BgEvent::UpdateFound(info));}
-            Ok(None)=>{let _=tx.send(BgEvent::UpdateNone);let _=tx.send(BgEvent::UpdateCheckFailed("当前已是最新版本".to_string()));}
+            Ok(None)=>{let _=tx.send(BgEvent::UpdateNone);}
             Err(e)=>{let _=tx.send(BgEvent::UpdateCheckFailed(e));}
         }
     });
@@ -428,22 +462,34 @@ fn StartUpdate(mut st:Signal<AppState>){
 pub fn App()->Element{
     let(bg_tx,bg_rx)=mpsc::channel::<BgEvent>();
     let bg_rx=Arc::new(Mutex::new(bg_rx));let cfg=config::load();
-    let mut init=AppState{cfg,images:vec![],selected:0,loading:false,error:String::new(),notice_text:String::new(),notice_color:String::new(),prompt:String::new(),mode:Mode::Text,out_fmt:OutFmt::Url,model_index:0,size_preset_index:0,custom_w:1024,custom_h:1024,input_src:InputSrc::File,input_url:String::new(),input_file:None,api_key_visible:false,show_popup:false,popup_uri:String::new(),popup_dims:[0,0],popup_zoom:1.0,popup_pan:[0.0,0.0],gen_elapsed:0.0,bg_tx:EventTx(bg_tx),bg_rx,workspace:Workspace::Image,tier_index:0,ratio_index:0,videos:vec![],video_selected:0,video_loading:false,video_error:String::new(),video_elapsed:0.0,video_progress:0.0,video_msg:String::new(),video_job:None,video_prompt:String::new(),video_neg:String::new(),vmodel_index:0,vsize_index:0,vw_custom:1152,vh_custom:768,vduration_index:1,vframes_custom:121,vfps_custom:24,vmode:VMode::Text,video_image_urls:vec![],video_url_input:String::new(),v25_mode:V25Mode::Text,v25_seconds_index:1,v25_ar_index:0,v25_first:String::new(),v25_last:String::new(),v25_images:vec![],v25_audios:vec![],v25_videos:vec![],v25_input:String::new(),video_store:Arc::new(Mutex::new(HashMap::new())),
-        update_info:None,update_checking:false,update_downloading:false,update_progress:0,update_error:String::new(),show_update_dialog:false,reset_token:0};
+    let mut init=AppState{cfg,images:vec![],selected:0,loading:false,error:String::new(),notice:None,prompt:String::new(),mode:Mode::Text,out_fmt:OutFmt::Url,model_index:0,size_preset_index:0,custom_w:1024,custom_h:1024,input_src:InputSrc::File,input_url:String::new(),input_file:None,api_key_visible:false,show_popup:false,popup_uri:String::new(),popup_dims:[0,0],popup_zoom:1.0,popup_pan:[0.0,0.0],gen_elapsed:0.0,bg_tx:EventTx(bg_tx),bg_rx,workspace:Workspace::Image,tier_index:0,ratio_index:0,videos:vec![],video_selected:0,video_loading:false,video_error:String::new(),video_elapsed:0.0,video_progress:0.0,video_msg:String::new(),video_job:None,video_prompt:String::new(),video_neg:String::new(),vmodel_index:0,vsize_index:0,vw_custom:1152,vh_custom:768,vduration_index:1,vframes_custom:121,vfps_custom:24,vmode:VMode::Text,video_image_urls:vec![],video_url_input:String::new(),v25_mode:V25Mode::Text,v25_seconds_index:1,v25_ar_index:0,v25_first:String::new(),v25_last:String::new(),v25_images:vec![],v25_audios:vec![],v25_videos:vec![],v25_input:String::new(),video_store:Arc::new(Mutex::new(HashMap::new())),
+        update_info:None,update_checking:false,update_uptodate:false,update_downloading:false,update_progress:0,update_error:String::new(),show_update_dialog:false,show_settings:false,reset_token:0,theme:ThemeMode::System,lang:Lang::Zh};
     set_defaults(&mut init);set_video_defaults(&mut init);let st=use_signal(||init);
+    let css=use_hook(||theme::css());
 
     {let mut s2=st.clone();use_future(move||async move{loop{let evs={let state=s2.read();let rx=state.bg_rx.clone();let evs=rx.lock().unwrap().try_iter().collect::<Vec<_>>();evs};for ev in evs{let mut s=s2.write();match ev{
-        BgEvent::ImageDone{bytes,url,prompt,model,size}=>{s.loading=false;match raw_to_data_uri(&bytes){Ok(uri)=>match image::load_from_memory(&bytes){Ok(img)=>{s.images.push(CachedImage{data_uri:uri,url,prompt,model,size,dims:[img.width()as usize,img.height()as usize],raw_bytes:bytes});s.selected=s.images.len()-1;s.error.clear();},Err(e)=>s.error=format!("解码图片失败：{e}")},Err(e)=>s.error=e}}
+        BgEvent::ImageDone{bytes,url,prompt,model,size}=>{s.loading=false;match raw_to_data_uri(&bytes){Ok(uri)=>match image::load_from_memory(&bytes){Ok(img)=>{s.images.push(CachedImage{data_uri:uri,url,prompt,model,size,dims:[img.width()as usize,img.height()as usize],raw_bytes:bytes});s.selected=s.images.len()-1;s.error.clear();},Err(e)=>s.error=format!("decode failed: {e}")},Err(e)=>s.error=e}}
         BgEvent::Error(e)=>{s.loading=false;s.error=e}
         BgEvent::FilePicked(f)=>{s.input_file=f}
         BgEvent::DirPicked(d)=>{if let Some(d)=d{s.cfg.save_dir=d}}
         BgEvent::VideoCreated{video_id,task_id,seconds,size,model}=>{
             s.video_job=Some(VideoJob{video_id,task_id,prompt:s.video_prompt.clone(),model});
-            s.video_progress=1.0;s.video_msg="任务已创建，等待生成…".to_string();
+            s.video_progress=1.0;s.video_msg=i18n::t(s.lang,"vs.created").to_string();
             s.video_error.clear();
             let _=(seconds,size);
         }
         BgEvent::VideoStatus{done,failed,progress,message,seconds,size,transient}=>{
+            let L=s.lang;
+            // 后端状态码（queued/in_progress）与空失败信息按当前语言本地化
+            let message=if failed&&message.is_empty(){
+                i18n::t(L,"vs.fail").to_string()
+            }else{
+                match message.as_str(){
+                    "queued"=>i18n::t(L,"vs.queued").to_string(),
+                    "in_progress"=>i18n::t(L,"vs.running").to_string(),
+                    m=>m.to_string(),
+                }
+            };
             s.video_progress=progress;s.video_msg=message.clone();
             let _=(seconds,size);
             if transient{
@@ -454,7 +500,7 @@ pub fn App()->Element{
             }else{
                 // 正常进度 / 完成：清除临时错误
                 s.video_error.clear();
-                if done{s.video_msg="下载完成".to_string();}
+                if done{s.video_msg=i18n::t(L,"vs.dldone").to_string();}
             }
         }
         BgEvent::VideoReady{bytes,video_url,prompt,model,seconds,size}=>{
@@ -464,20 +510,22 @@ pub fn App()->Element{
             if let Ok(mut g)=s.video_store.lock(){g.insert(idx,arc.clone());}
             s.videos.push(CachedVideo{video_url,bytes:arc.to_vec(),data_uri:String::new(),prompt,model,size,seconds});
             s.video_selected=s.videos.len()-1;
-            s.video_progress=100.0;s.video_msg="生成完成".to_string();
+            s.video_progress=100.0;s.video_msg=i18n::t(s.lang,"vs.done").to_string();
         }
         BgEvent::VideoSaved{index,path}=>{
             // 重新下载成功后，顺便用有效字节更新缓存
             if let Ok(b)=std::fs::read(&path){if is_valid_mp4(&b)&&index<s.videos.len(){s.videos[index].bytes=b;}}
-            s.notice(format!("已保存：{path}"),"#2eb478");
+            let msg=i18n::tf(s.lang,"nt.saved",&[("p",&path)]);
+            s.notice(NoticeKind::Ok,msg);
         }
         BgEvent::VideoSaveFailed{index,error}=>{
             let _=index;
-            s.notice(format!("保存失败：{error}"),"#e14646");
+            let msg=i18n::tf(s.lang,"nt.savefail",&[("e",&error)]);
+            s.notice(NoticeKind::Err,msg);
         }
-        BgEvent::UpdateFound(info)=>{s.update_checking=false;s.update_info=Some(info);s.show_update_dialog=true;}
-        BgEvent::UpdateNone=>{s.update_checking=false;}
-        BgEvent::UpdateCheckFailed(e)=>{s.update_checking=false;s.update_error=e;}
+        BgEvent::UpdateFound(info)=>{s.update_checking=false;s.update_uptodate=false;s.update_info=Some(info);s.show_update_dialog=true;}
+        BgEvent::UpdateNone=>{s.update_checking=false;s.update_uptodate=true;s.update_error.clear();}
+        BgEvent::UpdateCheckFailed(e)=>{s.update_checking=false;s.update_uptodate=false;s.update_error=e;}
         BgEvent::UpdateDownloadProgress(p)=>{s.update_progress=p;}
         BgEvent::UpdateDownloadDone(path)=>{
             s.update_downloading=false;
@@ -516,12 +564,16 @@ pub fn App()->Element{
                             let _=s2.write().bg_tx.0.send(BgEvent::VideoStatus{done:false,failed:true,progress:st_.progress,message:st_.message,seconds:st_.seconds,size:st_.size,transient:false});
                         }else if st_.done{
                             if let Some(url)=st_.video_url{
-                                let _=s2.write().bg_tx.0.send(BgEvent::VideoStatus{done:true,failed:false,progress:100.0,message:"正在下载视频…".to_string(),seconds:st_.seconds.clone(),size:st_.size.clone(),transient:false});
+                                let L=s2.read().lang;
+                                let _=s2.write().bg_tx.0.send(BgEvent::VideoStatus{done:true,failed:false,progress:100.0,message:i18n::t(L,"vs.dl").to_string(),seconds:st_.seconds.clone(),size:st_.size.clone(),transient:false});
                                 match api::download_video(&key,&url).await{
                                     Ok(b)=>{let _=s2.write().bg_tx.0.send(BgEvent::VideoReady{bytes:b,video_url:url,prompt,model:j.model.clone(),seconds:st_.seconds,size:st_.size});}
                                     Err(e)=>{let _=s2.write().bg_tx.0.send(BgEvent::VideoStatus{done:false,failed:true,progress:0.0,message:e,seconds:String::new(),size:String::new(),transient:false});}
                                 }
-                            }else{let _=s2.write().bg_tx.0.send(BgEvent::VideoStatus{done:false,failed:true,progress:0.0,message:"任务完成但未返回视频地址".to_string(),seconds:String::new(),size:String::new(),transient:false});}
+                            }else{
+                                let L=s2.read().lang;
+                                let _=s2.write().bg_tx.0.send(BgEvent::VideoStatus{done:false,failed:true,progress:0.0,message:i18n::t(L,"vs.nourl").to_string(),seconds:String::new(),size:String::new(),transient:false});
+                            }
                         }else{
                             let _=s2.write().bg_tx.0.send(BgEvent::VideoStatus{done:false,failed:false,progress:st_.progress,message:st_.message,seconds:st_.seconds,size:st_.size,transient:false});
                         }
@@ -530,9 +582,10 @@ pub fn App()->Element{
                         // 暂时性错误（429 / 网络抖动）：不中断，渐进退避
                         fails+=1;
                         interval=(interval*2).min(30);
+                        let L=s2.read().lang;
                         let hint=if e.contains("429")||e.to_lowercase().contains("rate limit"){
-                            format!("查询限流，{interval} 秒后重试…")
-                        }else{format!("查询失败，{interval} 秒后重试…")};
+                            i18n::tf(L,"vs.retry429",&[("n",&interval.to_string())])
+                        }else{i18n::tf(L,"vs.retry",&[("n",&interval.to_string())])};
                         let prog=s2.read().video_progress;
                         let _=s2.write().bg_tx.0.send(BgEvent::VideoStatus{done:false,failed:false,progress:prog,message:hint,seconds:String::new(),size:String::new(),transient:true});
                         // 连续 20 次（约累计数分钟）仍失败才判定为真失败
@@ -578,182 +631,207 @@ pub fn App()->Element{
         });
     }
 
+    let theme_attr=st.read().theme.attr().to_string();
     rsx!{
-        div{style:"display:flex;flex-direction:column;height:100vh;background:#f4f5fa;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;",
+        div{class:"app","data-theme":"{theme_attr}",
             TopBar{st:st.clone()}
-            div{style:"display:flex;flex:1;overflow:hidden;",
+            div{class:"body",
                 if st.read().workspace==Workspace::Video{
                     VideoSidePanel{st:st.clone()}
-                    VideoMainArea{st:st.clone()}
                 }else{
                     SidePanel{st:st.clone()}
-                    MainArea{st:st.clone()}
+                }
+                div{class:"work",
+                    if st.read().workspace==Workspace::Video{
+                        VideoMainArea{st:st.clone()}
+                    }else{
+                        MainArea{st:st.clone()}
+                    }
+                    HistoryBar{st:st.clone()}
                 }
             }
-            HistoryBar{st:st.clone()}
             PreviewModal{st:st.clone()}
             UpdateDialog{st:st.clone()}
-            style{"{CSS}"}
+            SettingsDialog{st:st.clone()}
+            style{"{css}"}
         }
     }
 }
-
-const CSS:&str=r#".k{background:#fff;border:1px solid #e8eaf2;border-radius:14px;padding:16px;margin:6px 2px;box-shadow:0 2px 10px rgba(0,0,0,0.04)}
-.kd{display:flex;align-items:center;margin-bottom:8px;gap:6px}.kc{width:6px;height:6px;border-radius:3px;background:#7c5cff}.kt{font-size:13px;font-weight:700;color:#1c1e2e}
-.h{font-size:13px;font-weight:700;color:#1c1e2e;margin-bottom:8px}
-.g{padding:6px 12px;border:1px solid #e8eaf2;border-radius:9px;background:transparent;color:#828698;font-size:13px;cursor:pointer;white-space:nowrap}
-.sg{display:flex;gap:4px;background:#f4f5fa;border-radius:10px;padding:4px}.s1{flex:1;padding:6px 12px;border:none;border-radius:7px;font-size:13px;font-weight:600;text-align:center}
-.sel{width:100%;padding:8px 10px;border:1px solid #e8eaf2;border-radius:10px;font-size:13px;color:#1c1e2e;background:#f8f9fd;outline:none}
-.ta{width:100%;min-height:100px;padding:10px;border:1px solid #e8eaf2;border-radius:10px;font-size:13.5px;color:#1c1e2e;background:#f8f9fd;resize:vertical;outline:none;box-sizing:border-box;font-family:inherit}
-.ix{width:100%;padding:8px 10px;border:1px solid #e8eaf2;border-radius:10px;font-size:13px;color:#1c1e2e;background:#f8f9fd;outline:none;box-sizing:border-box}
-.b2{width:100%;height:44px;border:none;border-radius:11px;background:#7c5cff;color:#fff;font-size:15px;font-weight:700;cursor:pointer}
-.er{font-size:12.5px;color:#e14646;margin-top:4px}
-@keyframes s{to{transform:rotate(360deg)}}@keyframes m{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}
-"#;
 
 // ── TopBar ──────────────────────────────────────────────────────────────────────
 
 #[component]
 fn TopBar(st:Signal<AppState>)->Element{
+    let L=st.read().lang;
     let key_ok=!st.read().cfg.api_key.trim().is_empty();
     let ws=st.read().workspace;
     let mdl=if ws==Workspace::Video{
-        VIDEO_MODELS.get(st.read().vmodel_index).map(|m|m.1).unwrap_or("").to_string()
+        VIDEO_MODELS.get(st.read().vmodel_index).map(|m|m.0).unwrap_or("").to_string()
     }else{
-        MODELS.get(st.read().model_index).map(|m|m.1).unwrap_or("").to_string()
+        MODELS.get(st.read().model_index).map(|m|m.0).unwrap_or("").to_string()
     };
-    let img_loading=st.read().loading;
-    let vid_loading=st.read().video_loading;
-    let loading=match ws{Workspace::Image=>img_loading,Workspace::Video=>vid_loading};
-    let dot_c=if key_ok{"#2eb478"}else{"#e14646"};
-    let txc=if key_ok{"#828698"}else{"#e14646"};
-    let txt=if key_ok{"API Key 已就绪"}else{"未设置 API Key"};
-    let gen_el=if loading{Some(rsx!{span{style:"font-size:12.5px;color:#7c5cff;margin-right:14px;","● 生成中"}})}else{None};
-
-    let upd_el=if st.read().update_info.is_some(){
-        let ver=st.read().update_info.as_ref().unwrap().version.clone();
-        Some(rsx!{
-            span{style:"font-size:12px;color:#7c5cff;background:#ebe6ff;padding:2px 8px;border-radius:4px;cursor:pointer;margin-right:10px;",
-                onclick:move|_|st.write().show_update_dialog=true,
-                "● 有新版本 v{ver}"
-            }
-        })
-    }else{None};
-
+    let loading=match ws{Workspace::Image=>st.read().loading,Workspace::Video=>st.read().video_loading};
+    let dot_c=if key_ok{"var(--ok)"}else{"var(--err)"};
+    let key_txt=if key_ok{i18n::t(L,"key.ok")}else{i18n::t(L,"key.missing")};
+    let gen_txt=format!("● {}",i18n::t(L,"top.gen"));
+    let upd_el=st.read().update_info.as_ref().map(|i|{
+        let txt=format!("● {}",i18n::tf(L,"upd.chip",&[("v",&i.version)]));
+        rsx!{
+            span{class:"chip warn click",onclick:move|_|st.write().show_update_dialog=true,"{txt}"}
+        }
+    });
+    let web_lnk=i18n::t(L,"link.web").to_string();
+    let is_img=ws==Workspace::Image;
+    let img_cls=if is_img{"tab on"}else{"tab"};
+    let vid_cls=if is_img{"tab"}else{"tab on"};
+    let img_tab=format!("🖼 {}",i18n::t(L,"tab.image"));
+    let vid_tab=format!("🎬 {}",i18n::t(L,"tab.video"));
+    let theme_icon=st.read().theme.icon().to_string();
+    let theme_tip=match st.read().theme{ThemeMode::Light=>i18n::t(L,"th.light"),ThemeMode::Dark=>i18n::t(L,"th.dark"),ThemeMode::System=>i18n::t(L,"th.sys")}.to_string();
+    let lang_lbl=if L==Lang::Zh{"EN"}else{"中"}.to_string();
+    let set_tip=i18n::t(L,"set.title").to_string();
     let on_img=move|_|st.write().workspace=Workspace::Image;
     let on_vid=move|_|st.write().workspace=Workspace::Video;
-    let is_img=ws==Workspace::Image;
-    let img_bg=if is_img{"#7c5cff"}else{"transparent"};
-    let img_c=if is_img{"#fff"}else{"#828698"};
-    let vid_bg=if!is_img{"#7c5cff"}else{"transparent"};
-    let vid_c=if!is_img{"#fff"}else{"#828698"};
+    let cycle_theme=move|_|{
+        let mut s=st.write();
+        s.theme=s.theme.cycle();
+        s.cfg.theme=s.theme.to_cfg().to_string();
+        config::save(&s.cfg);
+    };
+    let toggle_lang=move|_|{
+        let mut s=st.write();
+        s.lang=if s.lang==Lang::Zh{Lang::En}else{Lang::Zh};
+        s.cfg.lang=s.lang.to_cfg().to_string();
+        config::save(&s.cfg);
+    };
 
     rsx!{
-        div{style:"display:flex;align-items:center;height:56px;padding:0 20px;background:#ffffff;box-shadow:0 1px 6px rgba(0,0,0,0.04);flex-shrink:0;gap:10px;",
-            img{src:"/icon",alt:"AgnesStudio",style:"width:22px;height:22px;flex-shrink:0;"}
-            span{style:"font-size:16px;font-weight:700;color:#1c1e2e;","AgnesStudio"}
-            span{style:"font-size:11px;color:#7c5cff;background:#ebe6ff;padding:2px 8px;border-radius:4px;","{mdl}"}
-            div{style:"width:8px;"}
-            div{style:"display:flex;gap:2px;background:#f4f5fa;border-radius:10px;padding:4px;",
-                span{style:"padding:5px 16px;border:none;border-radius:7px;font-size:13px;font-weight:600;text-align:center;cursor:pointer;color:{img_c};background:{img_bg};",onclick:on_img,"🖼 图片"}
-                span{style:"padding:5px 16px;border:none;border-radius:7px;font-size:13px;font-weight:600;text-align:center;cursor:pointer;color:{vid_c};background:{vid_bg};",onclick:on_vid,"🎬 视频"}
+        div{class:"topbar",
+            img{src:"/icon",alt:"AgnesStudio",style:"width:23px;height:23px;flex-shrink:0;"},
+            span{class:"brand","AgnesStudio"}
+            span{class:"modelbadge","{mdl}"}
+            div{style:"width:6px;flex-shrink:0;"}
+            div{class:"tabs",
+                button{class:"{img_cls}",onclick:on_img,"{img_tab}"}
+                button{class:"{vid_cls}",onclick:on_vid,"{vid_tab}"}
             }
             div{style:"flex:1;"}
-            span{style:"font-size:12px;color:#828698;cursor:pointer;text-decoration:underline;",onclick:move|_|open_url("https://agnes-ai.com/"),"Agnes 官网"}
-            span{style:"font-size:12px;color:#828698;cursor:pointer;text-decoration:underline;margin-left:14px;",onclick:move|_|open_url("https://github.com/LingyunStudio/AgnesStudio"),"GitHub"}
             {upd_el}
-            {gen_el}
-            div{style:"width:8px;height:8px;border-radius:4px;background:{dot_c};flex-shrink:0;"}
-            span{style:"font-size:12.5px;color:{txc};","{txt}"}
+            if loading{
+                span{class:"chip pulse","{gen_txt}"}
+            }
+            span{class:"link",onclick:move|_|open_url("https://agnes-ai.com/"),"{web_lnk}"}
+            span{class:"link",onclick:move|_|open_url("https://github.com/LingyunStudio/AgnesStudio"),"GitHub"}
+            button{class:"iconbtn",title:"{theme_tip}",onclick:cycle_theme,"{theme_icon}"}
+            button{class:"iconbtn",style:"font-weight:800;font-size:12px;",title:"Language",onclick:toggle_lang,"{lang_lbl}"}
+            button{class:"iconbtn",title:"{set_tip}",onclick:move|_|st.write().show_settings=true,"⚙"}
+            div{class:"keychip",
+                div{class:"dot",style:"background:{dot_c};"}
+                span{"{key_txt}"}
+            }
         }
     }
 }
 
-// ── SidePanel ───────────────────────────────────────────────────────────────────
+// ── SidePanel（图片）──────────────────────────────────────────────────────────
 
 #[component]
 fn SidePanel(st:Signal<AppState>)->Element{
+    let L=st.read().lang;
     let midx=st.read().model_index;
     let loading=st.read().loading;
-    let btn_op=if loading{"0.6"}else{"1"};
     let sidx=st.read().size_preset_index;
-    let err=st.read().error.clone();
     let is_21=img_is_21(&st.read());
     let tidx=st.read().tier_index;
     let ridx=st.read().ratio_index;
+    let reset=st.read().reset_token;
+    let prompt=st.read().prompt.clone();
+    let mode_sel=if matches!(st.read().mode,Mode::Image){1}else{0};
+    let fmt_sel=if matches!(st.read().out_fmt,OutFmt::B64){1}else{0};
 
     let mut mopts:Vec<Element>=Vec::new();
-    for(i,(nm,_))in MODELS.iter().enumerate(){mopts.push(rsx!{option{selected:i==midx,value:"{i}","{nm}"}});}
+    for(i,(_,b))in MODELS.iter().enumerate(){mopts.push(rsx!{option{selected:i==midx,value:"{i}","{b.l(L)}"}});}
     let mut sopts:Vec<Element>=Vec::new();
-    for(i,(nm,_))in SIZE_PRESETS.iter().enumerate(){sopts.push(rsx!{option{selected:i==sidx,value:"{i}","{nm}"}});}
+    for(i,(b,_))in SIZE_PRESETS.iter().enumerate(){sopts.push(rsx!{option{selected:i==sidx,value:"{i}","{b.l(L)}"}});}
     let mut topts:Vec<Element>=Vec::new();
-    for(i,t)in IMG_TIERS.iter().enumerate(){topts.push(rsx!{option{selected:i==tidx,value:"{i}","{t} 档"}});}
+    for(i,tier)in IMG_TIERS.iter().enumerate(){
+        let lab=i18n::tf(L,"img.tieropt",&[("t",tier)]);
+        topts.push(rsx!{option{selected:i==tidx,value:"{i}","{lab}"}});
+    }
     let mut ropts:Vec<Element>=Vec::new();
     for(i,(rt,_))in IMG_TIER_SIZES.iter().enumerate(){ropts.push(rsx!{option{selected:i==ridx,value:"{i}","{rt}"}});}
 
-    rsx!{
-        div{style:"display:flex;flex-direction:column;width:384px;min-width:320px;max-width:480px;overflow-y:auto;padding:14px 16px;background:#ffffff;flex-shrink:0;",
+    let ph=i18n::t(L,"img.ph").to_string();
+    let mode_lbl=i18n::t(L,"card.mode").to_string();
+    let tier_lbl=i18n::t(L,"card.tier").to_string();
+    let ratio_lbl=i18n::t(L,"card.ratio").to_string();
+    let gen_btn=if loading{i18n::t(L,"img.wait").to_string()}else{format!("✨  {}",i18n::t(L,"img.gen"))};
+    let mode_opts=vec![i18n::t(L,"img.t2i").to_string(),i18n::t(L,"img.i2i").to_string()];
+    let fmt_opts=vec!["URL".to_string(),"Base64".to_string()];
+    let exact_hint=i18n::tf(L,"img.exact",&[("exact",tier_exact_size(&st.read())),("size",&resolved_size(&st.read())),("ratio",resolved_ratio(&st.read()).as_deref().unwrap_or(""))]);
+    let cur_hint=i18n::tf(L,"img.cur",&[("s",&resolved_size(&st.read()))]);
 
-            Card{title:"模型",
+    rsx!{
+        div{class:"side",
+            div{class:"side-scroll",
+
+            Card{title:i18n::t(L,"card.model").to_string(),
                 select{class:"sel",onchange:move|e|{if let Ok(i)=e.value().parse::<usize>(){st.write().model_index=i;}},value:"{midx}",{mopts.into_iter()}}
-                div{style:"height:8px;"}div{class:"h","模式"}
-                SegBtns{st:st.clone(),sel:if matches!(st.read().mode,Mode::Image){1}else{0},opts:&["文生图","图生图"],on_set:move|i|st.write().mode=if i==0{Mode::Text}else{Mode::Image}}
+                div{class:"subh","{mode_lbl}"}
+                SegBtns{sel:mode_sel,opts:mode_opts,on_set:move|i|st.write().mode=if i==0{Mode::Text}else{Mode::Image}}
             }
 
-            Card{title:"提示词",
-                textarea{key:"img-prompt-{st.read().reset_token}",class:"ta",placeholder:"描述你想生成或编辑的图像…",initial_value:"{st.read().prompt}",oninput:move|e|st.write().prompt=e.value()}
+            Card{title:i18n::t(L,"card.prompt").to_string(),
+                textarea{key:"img-prompt-{reset}",class:"ta",placeholder:"{ph}",initial_value:"{prompt}",oninput:move|e|st.write().prompt=e.value()}
             }
 
             if st.read().mode==Mode::Image{InputSection{st:st.clone()}}
 
             if is_21{
-                Card{title:"尺寸",
-                    div{class:"h","档位"}
+                Card{title:i18n::t(L,"card.size").to_string(),
+                    div{class:"subh",style:"margin-top:0;","{tier_lbl}"}
                     select{class:"sel",onchange:move|e|{if let Ok(i)=e.value().parse::<usize>(){st.write().tier_index=i;}},value:"{tidx}",{topts.into_iter()}}
-                    div{style:"height:6px;"}div{class:"h","宽高比"}
+                    div{class:"subh","{ratio_lbl}"}
                     select{class:"sel",onchange:move|e|{if let Ok(i)=e.value().parse::<usize>(){st.write().ratio_index=i;}},value:"{ridx}",{ropts.into_iter()}}
-                    div{style:"margin-top:6px;font-size:12px;color:#828698;","输出约 {tier_exact_size(&st.read())}（{resolved_size(&st.read())} · {resolved_ratio(&st.read()).unwrap_or_default()}）"}
+                    div{class:"hint","{exact_hint}"}
                 }
             }else{
-                Card{title:"尺寸",
+                Card{title:i18n::t(L,"card.size").to_string(),
                     select{class:"sel",onchange:move|e|{if let Ok(i)=e.value().parse::<usize>(){st.write().size_preset_index=i;}},value:"{sidx}",{sopts.into_iter()}}
                     if sidx==SIZE_PRESETS.len()-1{CustomSize{st:st.clone()}}
-                    div{style:"margin-top:4px;font-size:12px;color:#828698;","当前：{resolved_size(&st.read())}"}
+                    div{class:"hint",style:"margin-top:6px;","{cur_hint}"}
                 }
             }
 
-            Card{title:"输出格式",
-                SegBtns{st:st.clone(),sel:if matches!(st.read().out_fmt,OutFmt::B64){1}else{0},opts:&["URL","Base64"],on_set:move|i|st.write().out_fmt=if i==0{OutFmt::Url}else{OutFmt::B64}}
+            Card{title:i18n::t(L,"card.output").to_string(),
+                SegBtns{sel:fmt_sel,opts:fmt_opts,on_set:move|i|st.write().out_fmt=if i==0{OutFmt::Url}else{OutFmt::B64}}
+            }
             }
 
-            div{style:"padding:0 2px;margin-top:2px;",
-                button{class:"b2",style:"opacity:{btn_op};",disabled:loading,onclick:move|_|on_gen(st.clone()),if loading{"生成中…"}else{"✨  生成图像"}}
+            // 生成按钮固定在侧栏底部，永远可见，不会被历史栏遮挡
+            div{class:"side-action",
+                button{class:"b2",disabled:loading,onclick:move|_|on_gen(st.clone()),"{gen_btn}"}
             }
-            if!err.is_empty(){div{class:"er","⚠ {err}"}}
-
-            Card{title:"设置",SettingsBody{st:st.clone()}}
-            div{style:"height:6px;"}
         }
     }
 }
 
 #[component]
 fn Card(title:String,children:Element)->Element{
-    rsx!{div{class:"k",div{class:"kd",div{class:"kc"}span{class:"kt","{title}"}}{children}}}
+    rsx!{div{class:"card",
+        div{class:"cardh",span{class:"cardt","{title}"}}
+        {children}
+    }}
 }
 
 #[component]
-fn SegBtns(st:Signal<AppState>,sel:usize,opts:&'static[&'static str],on_set:EventHandler<usize>)->Element{
+fn SegBtns(sel:usize,opts:Vec<String>,on_set:EventHandler<usize>)->Element{
     let mut btns:Vec<Element>=Vec::new();
     for(i,opt)in opts.iter().enumerate(){
         let on=i==sel;
-        let c=if on{"#ffffff"}else{"#828698"};
-        let b=if on{"#7c5cff"}else{"transparent"};
+        let cls=if on{"s1 on"}else{"s1"};
         btns.push(rsx!{
-            span{key:"{i}",class:"s1",style:"cursor:pointer;color:{c};background:{b};",
-                onclick:move|_|on_set.call(i),
-                "{opt}"
-            }
+            button{key:"{i}",class:"{cls}",onclick:move|_|on_set.call(i),"{opt}"}
         });
     }
     rsx!{div{class:"sg",{btns.into_iter()}}}
@@ -761,20 +839,23 @@ fn SegBtns(st:Signal<AppState>,sel:usize,opts:&'static[&'static str],on_set:Even
 
 #[component]
 fn InputSection(st:Signal<AppState>)->Element{
+    let L=st.read().lang;
     let srci=if matches!(st.read().input_src,InputSrc::Url){1}else{0};
     let is_file=st.read().input_src==InputSrc::File;
     let has_f=st.read().input_file.is_some();
-    let fname=if let Some((ref n,_))=st.read().input_file{format!("📎 {}",n)}else{"未选择图片".to_string()};
+    let fname=if let Some((ref n,_))=st.read().input_file{format!("📎 {n}")}else{i18n::t(L,"img.nofile").to_string()};
     let tx=st.read().bg_tx.clone();
+    let input_url=st.read().input_url.clone();
+    let src_opts=vec![i18n::t(L,"img.file").to_string(),i18n::t(L,"img.url").to_string()];
 
     rsx!{
-        Card{title:"输入图片",
-            SegBtns{st:st.clone(),sel:srci,opts:&["本地文件","图片 URL"],on_set:move|i|st.write().input_src=if i==0{InputSrc::File}else{InputSrc::Url}}
-            div{style:"height:6px;"}
+        Card{title:i18n::t(L,"card.input").to_string(),
+            SegBtns{sel:srci,opts:src_opts,on_set:move|i|st.write().input_src=if i==0{InputSrc::File}else{InputSrc::Url}}
+            div{style:"height:6px;flex-shrink:0;"}
             if is_file{
                 FileInputArea{st:st.clone(),tx:tx.clone(),has_f:has_f,fname:fname}
             }else{
-                input{class:"ix",placeholder:"https://...",value:"{st.read().input_url}",oninput:move|e|st.write().input_url=e.value()}
+                input{class:"ix",placeholder:"https://...",value:"{input_url}",oninput:move|e|st.write().input_url=e.value()}
             }
         }
     }
@@ -782,57 +863,107 @@ fn InputSection(st:Signal<AppState>)->Element{
 
 #[component]
 fn CustomSize(st:Signal<AppState>)->Element{
+    let cw=st.read().custom_w;let ch=st.read().custom_h;
     rsx!{
-        div{style:"display:flex;gap:8px;margin-top:4px;align-items:center;",
-            input{class:"ix",style:"width:80px;text-align:center;",r#type:"number",min:64,max:4096,value:"{st.read().custom_w}",oninput:move|e|{if let Ok(v)=e.value().parse::<i32>(){st.write().custom_w=v.clamp(64,4096);}}}
-            span{style:"color:#828698;","×"}
-            input{class:"ix",style:"width:80px;text-align:center;",r#type:"number",min:64,max:4096,value:"{st.read().custom_h}",oninput:move|e|{if let Ok(v)=e.value().parse::<i32>(){st.write().custom_h=v.clamp(64,4096);}}}
+        div{class:"row",style:"margin-top:6px;",
+            input{class:"ix",style:"width:80px;text-align:center;",r#type:"number",min:64,max:4096,value:"{cw}",oninput:move|e|{if let Ok(v)=e.value().parse::<i32>(){st.write().custom_w=v.clamp(64,4096);}}}
+            span{style:"color:var(--text2);","×"}
+            input{class:"ix",style:"width:80px;text-align:center;",r#type:"number",min:64,max:4096,value:"{ch}",oninput:move|e|{if let Ok(v)=e.value().parse::<i32>(){st.write().custom_h=v.clamp(64,4096);}}}
         }
     }
 }
 
 #[component]
 fn SettingsBody(st:Signal<AppState>)->Element{
+    let L=st.read().lang;
     let pwd=if st.read().api_key_visible{"text"}else{"password"};
-    let eye=if st.read().api_key_visible{"🙈 隐藏".to_string()}else{"👁 显示".to_string()};
+    let eye=if st.read().api_key_visible{i18n::t(L,"set.hide")}else{i18n::t(L,"set.show")};
+    let eye_txt=eye.to_string();
     let tx=st.read().bg_tx.clone();
-    let upd_has_error=!st.read().update_error.is_empty();
-    let upd_err_color=if st.read().update_error.contains("已是最新"){"#2eb478"}else{"#e14646"};
+    let api_key=st.read().cfg.api_key.clone();
+    let save_dir=st.read().cfg.save_dir.clone();
+    let theme_sel=match st.read().theme{ThemeMode::Light=>0,ThemeMode::Dark=>1,ThemeMode::System=>2};
+    let lang_sel=if L==Lang::Zh{0}else{1};
+    let checking=st.read().update_checking;
+    let upd_err=st.read().update_error.clone();
+    let uptodate=st.read().update_uptodate;
+    let notice=st.read().notice.clone();
+    let ver=i18n::tf(L,"set.version",&[("v",updater::CURRENT_VERSION)]);
+    let theme_opts=vec![i18n::t(L,"th.light").to_string(),i18n::t(L,"th.dark").to_string(),i18n::t(L,"th.sys").to_string()];
+    let lang_opts=vec!["中文".to_string(),"English".to_string()];
+    let check_txt=if checking{i18n::t(L,"set.checking")}else{i18n::t(L,"set.check")};
+    let save_txt=i18n::t(L,"set.save").to_string();
+    let reset_txt=i18n::t(L,"set.reset").to_string();
+    let browse_txt=i18n::t(L,"set.browse").to_string();
+    let dir_lbl=i18n::t(L,"set.dir").to_string();
+    let theme_lbl=i18n::t(L,"set.theme").to_string();
+    let lang_lbl=i18n::t(L,"set.lang").to_string();
+    let checkLbl=i18n::t(L,"set.checking").to_string();
+    let ok_txt=i18n::t(L,"set.uptodate").to_string();
+    let notice_el=notice.map(|n|{
+        let cls=nt_class(n.kind);let txt=n.text;
+        rsx!{div{class:"{cls}",style:"margin-top:6px;","{txt}"}}
+    });
+
+    let set_theme=move|i:usize|{
+        let mut s=st.write();
+        s.theme=match i{0=>ThemeMode::Light,1=>ThemeMode::Dark,_=>ThemeMode::System};
+        s.cfg.theme=s.theme.to_cfg().to_string();
+        config::save(&s.cfg);
+    };
+    let set_lang=move|i:usize|{
+        let mut s=st.write();
+        s.lang=if i==0{Lang::Zh}else{Lang::En};
+        s.cfg.lang=s.lang.to_cfg().to_string();
+        config::save(&s.cfg);
+    };
 
     rsx!{
-        div{style:"display:flex;justify-content:space-between;align-items:center;",
-            span{style:"font-size:12px;color:#828698;","API Key"}
-            button{class:"g",onclick:move|_|{let vis=st.read().api_key_visible;st.write().api_key_visible=!vis;},"{eye}"}
+        div{class:"row between",
+            span{class:"lbl","API Key"}
+            button{class:"g",onclick:move|_|{let vis=st.read().api_key_visible;st.write().api_key_visible=!vis;},"{eye_txt}"}
         }
-        input{class:"ix",r#type:"{pwd}",placeholder:"Bearer token",value:"{st.read().cfg.api_key}",oninput:move|e|st.write().cfg.api_key=e.value()}
-        div{style:"height:6px;"}
-        span{style:"font-size:12px;color:#828698;","保存目录"}
-        div{style:"display:flex;gap:8px;margin-top:4px;",
-            input{class:"ix",style:"flex:1;",value:"{st.read().cfg.save_dir}",oninput:move|e|st.write().cfg.save_dir=e.value()}
-            button{class:"g",onclick:move|_|browse_dir(tx.clone()),"浏览"}
+        input{class:"ix",r#type:"{pwd}",placeholder:"Bearer token",value:"{api_key}",oninput:move|e|st.write().cfg.api_key=e.value()}
+        div{class:"subh","{dir_lbl}"}
+        div{class:"row",
+            input{class:"ix",style:"flex:1;",value:"{save_dir}",oninput:move|e|st.write().cfg.save_dir=e.value()}
+            button{class:"g",onclick:move|_|browse_dir(tx.clone()),"{browse_txt}"}
         }
-        div{style:"height:8px;"}
-        div{style:"display:flex;gap:8px;",
-            button{class:"g",onclick:move|_|{config::save(&st.read().cfg);st.write().notice("设置已保存".to_string(),"#2eb478");},"保存设置"}
-            button{class:"g",onclick:move|_|{let k=st.read().cfg.api_key.clone();st.write().cfg=config::Config::default();st.write().cfg.api_key=k;set_defaults(&mut st.write());},"恢复默认"}
+        div{class:"subh","{theme_lbl}"}
+        SegBtns{sel:theme_sel,opts:theme_opts,on_set:set_theme}
+        div{class:"subh","{lang_lbl}"}
+        SegBtns{sel:lang_sel,opts:lang_opts,on_set:set_lang}
+        div{style:"height:4px;flex-shrink:0;"}
+        div{class:"row",
+            button{class:"g",onclick:move|_|{config::save(&st.read().cfg);let msg=i18n::t(L,"set.saved").to_string();st.write().notice(NoticeKind::Ok,msg);},"{save_txt}"}
+            button{class:"g",onclick:move|_|{
+                // 恢复默认：保留 API Key 与界面偏好（主题/语言）
+                let k=st.read().cfg.api_key.clone();
+                let theme=st.read().theme;let lang=st.read().lang;
+                st.write().cfg=config::Config::default();
+                st.write().cfg.api_key=k;
+                st.write().cfg.theme=theme.to_cfg().to_string();
+                st.write().cfg.lang=lang.to_cfg().to_string();
+                set_defaults(&mut st.write());
+            },"{reset_txt}"}
         }
-        div{style:"height:10px;"}
-        div{style:"border-top:1px solid #e8eaf2;padding-top:10px;",
-            div{style:"display:flex;align-items:center;gap:8px;",
-                span{style:"font-size:12px;color:#828698;","版本 v{updater::CURRENT_VERSION}"}
-                if st.read().update_checking{
-                    span{style:"font-size:12px;color:#7c5cff;","检查中…"}
-                }
+        {notice_el}
+        div{style:"height:12px;flex-shrink:0;"}
+        div{style:"border-top:1px solid var(--border);padding-top:10px;",
+            div{class:"row",
+                span{class:"lbl","{ver}"}
+                if checking{span{class:"lbl",style:"color:var(--text2);","{checkLbl}"}}
                 div{style:"flex:1;"}
                 button{class:"g",onclick:move|_|CheckUpdate(st.clone()),
-                    disabled:st.read().update_checking,
-                    if st.read().update_checking{"检查中…"}else{"检查更新"}
+                    disabled:checking,
+                    "{check_txt}"
                 }
             }
-            if upd_has_error{
-                div{style:"font-size:12px;color:{upd_err_color};margin-top:6px;",
-                    "{st.read().update_error}"
-                }
+            if uptodate{
+                div{class:"nt nt-ok",style:"margin-top:6px;","{ok_txt}"}
+            }
+            if!upd_err.is_empty(){
+                div{class:"nt nt-err",style:"margin-top:6px;","{upd_err}"}
             }
         }
     }
@@ -840,70 +971,111 @@ fn SettingsBody(st:Signal<AppState>)->Element{
 
 #[component]
 fn FileInputArea(st:Signal<AppState>,tx:EventTx,has_f:bool,fname:String)->Element{
+    let L=st.read().lang;
+    let pick_txt=i18n::t(L,"img.pick").to_string();
+    let clear_txt=i18n::t(L,"img.clear").to_string();
     rsx!{
-        div{style:"display:flex;gap:8px;",
-            button{class:"g",onclick:move|_|pick_file(tx.clone(),st.clone()),"选择图片…"}
-            if has_f{button{class:"g",onclick:move|_|st.write().input_file=None,"清除"}}
+        div{class:"row",
+            button{class:"g",onclick:move|_|pick_file(tx.clone(),st.clone()),"{pick_txt}"}
+            if has_f{button{class:"g",onclick:move|_|st.write().input_file=None,"{clear_txt}"}}
         }
-        span{style:"font-size:12.5px;color:#2eb478;","{fname}"}
+        span{class:"oklbl","{fname}"}
     }
 }
 
 #[component]
 fn HistoryButtons(st:Signal<AppState>)->Element{
-    let ws=st.read().workspace;
     let prev=move|_|{
         let mut s=st.write();
         if s.workspace==Workspace::Video{
-            s.video_selected=if s.video_selected==0{s.videos.len()-1}else{s.video_selected-1};
+            s.video_selected=if s.video_selected==0{s.videos.len().max(1)-1}else{s.video_selected-1};
+            s.video_error.clear();
         }else{
-            s.selected=if s.selected==0{s.images.len()-1}else{s.selected-1};
+            s.selected=if s.selected==0{s.images.len().max(1)-1}else{s.selected-1};
+            s.error.clear();
         }
     };
     let next=move|_|{
         let mut s=st.write();
         if s.workspace==Workspace::Video{
-            s.video_selected=(s.video_selected+1)%s.videos.len();
+            s.video_selected=(s.video_selected+1)%s.videos.len().max(1);
+            s.video_error.clear();
         }else{
-            s.selected=(s.selected+1)%s.images.len();
+            s.selected=(s.selected+1)%s.images.len().max(1);
+            s.error.clear();
         }
     };
-    let _=ws;
     rsx!{
-        button{class:"g",onclick:prev,"◀"}
-        span{style:"width:4px;"}
-        button{class:"g",onclick:next,"▶"}
+        div{class:"row",
+            button{class:"g",onclick:prev,"◀"}
+            button{class:"g",onclick:next,"▶"}
+        }
     }
 }
 
-// ── MainArea ───────────────────────────────────────────────────────────────────
+// ── ErrorCard（主生成区的错误卡片）────────────────────────────────────────────
+
+#[component]
+fn ErrorCard(st:Signal<AppState>,error:String,on_dismiss:EventHandler<()>)->Element{
+    let L=st.read().lang;
+    // API Key 缺失时给出直达设置的入口
+    let nokey=error==i18n::t(L,"err.nokey");
+    let title=i18n::t(L,"err.title").to_string();
+    let open_set=i18n::t(L,"err.open_settings").to_string();
+    let dismiss_txt=i18n::t(L,"err.dismiss").to_string();
+    rsx!{
+        div{class:"center",
+            div{class:"errcard",
+                div{class:"erricon","⚠"}
+                span{class:"errtitle","{title}"}
+                span{class:"errmsg","{error}"}
+                div{class:"row",style:"margin-top:16px;",
+                    if nokey{
+                        button{class:"g",onclick:move|_|st.write().show_settings=true,"{open_set}"}
+                    }
+                    button{class:"g",onclick:move|_|on_dismiss.call(()),"{dismiss_txt}"}
+                }
+            }
+        }
+    }
+}
+
+// ── MainArea（图片）──────────────────────────────────────────────────────────
 
 #[component]
 fn MainArea(st:Signal<AppState>)->Element{
+    let L=st.read().lang;
     if st.read().loading{
         let elapsed=st.read().gen_elapsed;
+        let el_txt=i18n::tf(L,"main.elapsed",&[("s",&format!("{elapsed:.1}"))]);
+        let title_txt=i18n::t(L,"img.wait").to_string();
+        let wait_txt=i18n::t(L,"main.wait").to_string();
         return rsx!{
-            div{style:"flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f4f5fa;",
-                div{style:"width:48px;height:48px;border-radius:24px;background:#ebe6ff;display:flex;align-items:center;justify-content:center;margin-bottom:12px;",div{style:"width:28px;height:28px;border:3px solid #7c5cff;border-top-color:transparent;border-radius:14px;animation:s .8s linear infinite;"}}
-                span{style:"font-size:16px;font-weight:700;color:#1c1e2e;","生成中…"}
-                span{style:"font-size:12.5px;color:#828698;margin-top:4px;","已用时 {elapsed:.1} 秒"}
-                div{style:"width:240px;height:6px;background:#f5f6fc;border-radius:3px;margin-top:10px;overflow:hidden;",div{style:"width:40%;height:100%;background:#7c5cff;border-radius:3px;animation:m 1.2s ease-in-out infinite;"}}
-                span{style:"font-size:12px;color:#828698;margin-top:8px;","可能需要数秒到数十秒，请稍候"}
+            div{class:"center",
+                div{class:"spinner",div{class:"spin"}}
+                span{class:"loadtitle","{title_txt}"}
+                span{class:"loadsub","{el_txt}"}
+                div{class:"bar",div{class:"barind"}}
+                span{class:"loadsub",style:"margin-top:10px;","{wait_txt}"}
             }
         };
     }
 
+    // 错误统一在主生成区展示，左侧不再显示任何报错
+    let err=st.read().error.clone();
+    if!err.is_empty(){
+        return rsx!{ErrorCard{st:st.clone(),error:err,on_dismiss:move|_|st.write().error.clear()}};
+    }
+
     let has_imgs=!st.read().images.is_empty();
     if!has_imgs{
-        let err=st.read().error.clone();
-        if!err.is_empty(){
-            return rsx!{div{style:"flex:1;display:flex;align-items:center;justify-content:center;background:#f4f5fa;font-size:15px;color:#e14646;","⚠ {err}"}};
-        }
+        let welcome_txt=i18n::t(L,"main.welcome").to_string();
+        let empty_txt=i18n::t(L,"main.empty").to_string();
         return rsx!{
-            div{style:"flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f4f5fa;",
-                div{style:"width:56px;height:56px;border-radius:28px;background:#ebe6ff;border:1.5px solid #7c5cff;margin-bottom:14px;"}
-                span{style:"font-size:19px;font-weight:700;color:#1c1e2e;","欢迎使用 AgnesStudio"}
-                span{style:"font-size:13px;color:#828698;margin-top:6px;","在左侧输入提示词后点击「生成图像」"}
+            div{class:"center",
+                div{class:"emptylogo",img{src:"/icon",alt:"AgnesStudio",style:"width:34px;height:34px;"}}
+                span{class:"emptyt","{welcome_txt}"}
+                span{class:"emptys","{empty_txt}"}
             }
         };
     }
@@ -915,162 +1087,206 @@ fn MainArea(st:Signal<AppState>)->Element{
 
 #[component]
 fn ImageViewer(st:Signal<AppState>,entry:CachedImage)->Element{
-    let ntxt=st.read().notice_text.clone();let ncol=st.read().notice_color.clone();
+    let L=st.read().lang;
+    let notice=st.read().notice.clone();
     let dims=entry.dims;let has_url=entry.url.is_some();
     let url_act=entry.url.clone().unwrap_or_default();
     let d_uri=entry.data_uri.clone();
 
     let sz_str=format!("· {} · {}x{}",entry.size,dims[0],dims[1]);
-    let mut ar:Vec<Element>=vec![];
-    ar.push(rsx!{span{style:"font-size:12.5px;font-weight:700;color:#7c5cff;","{entry.model}"}});
-    ar.push(rsx!{span{style:"font-size:12.5px;color:#828698;","{sz_str}"}});
-    ar.push(rsx!{div{style:"flex:1;"}});
-    ar.push(rsx!{button{class:"g",onclick:move|_|on_gen(st.clone()),"🔄 重新生成"}});
-    if has_url{ar.push(rsx!{button{class:"g",onclick:move|_|open_url(&url_act),"🌐 打开原图"}});}
-    ar.push(rsx!{button{class:"g",onclick:move|_|do_save(&mut st.write()),"💾 保存"}});
+    let reg_txt=format!("🔄 {}",i18n::t(L,"act.reg"));
+    let open_txt=format!("🌐 {}",i18n::t(L,"act.openimg"));
+    let save_txt=format!("💾 {}",i18n::t(L,"act.save"));
+    let pline=format!("{}  {}",i18n::t(L,"viewer.prompt"),entry.prompt);
 
-    let ntel=if!ntxt.is_empty(){Some(rsx!{div{style:"margin-top:4px;font-size:12px;color:{ncol};","{ntxt}"}})}else{None};
+    let mut ar:Vec<Element>=vec![];
+    ar.push(rsx!{span{class:"mmodel","{entry.model}"}});
+    ar.push(rsx!{span{class:"minfo","{sz_str}"}});
+    ar.push(rsx!{div{style:"flex:1;"}});
+    ar.push(rsx!{button{class:"g",onclick:move|_|on_gen(st.clone()),"{reg_txt}"}});
+    if has_url{ar.push(rsx!{button{class:"g",onclick:move|_|open_url(&url_act),"{open_txt}"}});}
+    ar.push(rsx!{button{class:"g",onclick:move|_|do_save(&mut st.write()),"{save_txt}"}});
+
+    let ntel=notice.map(|n|{
+        let cls=nt_class(n.kind);let txt=n.text;
+        rsx!{div{class:"{cls}","{txt}"}}
+    });
 
     rsx!{
-        div{style:"flex:1;display:flex;flex-direction:column;padding:20px;overflow:hidden;background:#f4f5fa;",
-            div{style:"flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;",
-                div{style:"background:#ffffff;padding:10px;border-radius:14px;box-shadow:0 4px 18px rgba(0,0,0,0.06);display:inline-block;cursor:pointer;",
+        div{class:"main",
+            div{class:"stage",
+                div{class:"imgwrap",
                     img{src:"{d_uri}",style:"max-width:70vw;max-height:calc(100vh - 300px);object-fit:contain;border-radius:8px;display:block;",
                         onclick:move|_|{let mut s=st.write();s.show_popup=true;s.popup_uri=d_uri.clone();s.popup_dims=dims;s.popup_zoom=1.0;s.popup_pan=[0.0,0.0];}
                     }
                 }
             }
-            div{style:"margin-top:8px;background:#ffffff;border:1px solid #e8eaf2;border-radius:14px;padding:14px;box-shadow:0 2px 10px rgba(0,0,0,0.04);",
-                div{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;",{ar.into_iter()}}
-                hr{style:"border:none;border-top:1px solid #e8eaf2;margin:6px 0 4px;"}
-                div{style:"font-size:12.5px;color:#1c1e2e;",span{style:"font-size:12px;color:#828698;","提示词  "}"{entry.prompt}"}
+            div{class:"meta",
+                div{class:"metatop",{ar.into_iter()}}
+                hr{class:"divider"}
+                div{class:"mprompt","{pline}"}
                 {ntel}
             }
         }
     }
 }
 
-// ── HistoryBar ─────────────────────────────────────────────────────────────────
+// ── HistoryBar ───────────────────────────────────────────────────────────────
 
 #[component]
 fn HistoryBar(st:Signal<AppState>)->Element{
+    let L=st.read().lang;
     let ws=st.read().workspace;
     if ws==Workspace::Video{
         let vids=st.read().videos.clone();
         if vids.is_empty(){return rsx!{}}
         let count=vids.len();
         let cur=st.read().video_selected;
+        let title=i18n::tf(L,"hist.vid",&[("n",&count.to_string())]);
         let mut thumbs:Vec<Element>=Vec::new();
         for(i,_v)in vids.iter().enumerate(){
-            let border=if i==cur{"2.5px solid #7c5cff".to_string()}else{"2.5px solid transparent".to_string()};
+            let cls=if i==cur{"thumb on"}else{"thumb"};
             let label=format!("🎬 {}",i+1);
             thumbs.push(rsx!{
-                div{key:"{i}",style:"flex-shrink:0;cursor:pointer;border-radius:8px;padding:1.5px;border:{border};",
-                    onclick:move|_|st.write().video_selected=i,
-                    div{style:"width:94px;height:72px;border-radius:6px;background:#1c1e2e;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;","{label}"}
+                div{key:"{i}",class:"{cls}",
+                    onclick:move|_|{let mut s=st.write();s.video_selected=i;s.video_error.clear();},
+                    div{class:"thumbvid","{label}"}
                 }
             });
         }
         return rsx!{
-            div{style:"flex-shrink:0;max-height:140px;background:#ffffff;box-shadow:0 -1px 6px rgba(0,0,0,0.04);padding:10px 16px;",
-                div{style:"display:flex;align-items:center;margin-bottom:6px;",
-                    span{style:"font-size:12.5px;color:#828698;","视频历史  {count}"}
+            div{class:"hist",
+                div{class:"histh",
+                    span{class:"histt","{title}"}
                     div{style:"flex:1;"}
                     if count>1{HistoryButtons{st:st.clone()}}
                 }
-                div{style:"display:flex;flex-direction:row;flex-wrap:nowrap;gap:8px;overflow-x:auto;overflow-y:hidden;padding-bottom:4px;",{thumbs.into_iter()}}
+                div{class:"thumbs",{thumbs.into_iter()}}
             }
         };
     }
 
     if st.read().images.is_empty(){return rsx!{}}
     let count=st.read().images.len();
+    let title=i18n::tf(L,"hist.img",&[("n",&count.to_string())]);
 
     let mut thumbs:Vec<Element>=Vec::new();
     for(i,img)in st.read().images.iter().enumerate(){
-        let border=if i==st.read().selected{"2.5px solid #7c5cff".to_string()}else{"2.5px solid transparent".to_string()};
-        let _st_h=st.clone();
+        let cls=if i==st.read().selected{"thumb on"}else{"thumb"};
+        let uri=img.data_uri.clone();
         thumbs.push(rsx!{
-            div{key:"{i}",style:"flex-shrink:0;cursor:pointer;border-radius:8px;padding:1.5px;border:{border};",
-                onclick:move|_|st.write().selected=i,
-                img{src:"{img.data_uri}",style:"width:94px;height:72px;object-fit:cover;border-radius:6px;display:block;"}
+            div{key:"{i}",class:"{cls}",
+                onclick:move|_|{let mut s=st.write();s.selected=i;s.error.clear();},
+                img{class:"thumbimg",src:"{uri}"}
             }
         });
     }
 
     rsx!{
-        div{style:"flex-shrink:0;max-height:140px;background:#ffffff;box-shadow:0 -1px 6px rgba(0,0,0,0.04);padding:10px 16px;",
-            div{style:"display:flex;align-items:center;margin-bottom:6px;",
-                span{style:"font-size:12.5px;color:#828698;","历史记录  {count}"}
+        div{class:"hist",
+            div{class:"histh",
+                span{class:"histt","{title}"}
                 div{style:"flex:1;"}
                 if count>1{HistoryButtons{st:st.clone()}}
             }
-            div{style:"display:flex;flex-direction:row;flex-wrap:nowrap;gap:8px;overflow-x:auto;overflow-y:hidden;padding-bottom:4px;",{thumbs.into_iter()}}
+            div{class:"thumbs",{thumbs.into_iter()}}
+        }
+    }
+}
+
+// ── UpdateDialog ───────────────────────────────────────────────────────────────
+
+#[component]
+fn UpdateDialog(st:Signal<AppState>)->Element{
+    if!st.read().show_update_dialog{return rsx!{}}
+    let info=match st.read().update_info.clone(){Some(i)=>i,None=>return rsx!{}};
+    let L=st.read().lang;
+    let downloading=st.read().update_downloading;
+    let progress=st.read().update_progress;
+    let err=st.read().update_error.clone();
+    let has_setup=info.setup_url.is_some();
+    let cur=updater::CURRENT_VERSION.to_string();
+    let notes_text=if info.notes.trim().is_empty(){i18n::t(L,"upd.nonotes").to_string()}else{info.notes.clone()};
+    let notes_html=render_markdown(&notes_text);
+    let new_ver=info.version.clone();
+    let html=info.html_url.clone();
+    let verline=format!("v{cur}  ->  v{new_ver}");
+    let title_txt=i18n::t(L,"upd.title").to_string();
+    let dl_txt=i18n::tf(L,"upd.dl",&[("p",&progress.to_string())]);
+    let dling_txt=i18n::t(L,"upd.dling").to_string();
+    let now_txt=i18n::t(L,"upd.now").to_string();
+    let goto_txt=i18n::t(L,"upd.goto").to_string();
+    let later_txt=i18n::t(L,"upd.later").to_string();
+
+    rsx!{
+        div{class:"mask",
+            onclick:move|_|{if!downloading{st.write().show_update_dialog=false;}},
+            div{class:"dialog",
+                onclick:move|e|e.stop_propagation(),
+                div{class:"row",style:"gap:9px;margin-bottom:2px;",
+                    div{style:"width:10px;height:10px;border-radius:5px;background:var(--warn);flex-shrink:0;"}
+                    span{class:"dtitle","{title_txt}"}
+                }
+                span{class:"dsub","{verline}"}
+                div{class:"notes",dangerous_inner_html:"{notes_html}"}
+                if!err.is_empty(){
+                    div{class:"nt nt-err",style:"margin:0 0 10px;","{err}"}
+                }
+                if downloading{
+                    div{style:"margin-bottom:8px;",
+                        div{style:"height:8px;background:var(--fill);border-radius:4px;overflow:hidden;",
+                            div{style:"height:100%;width:{progress}%;background:var(--bar);border-radius:4px;transition:width .3s;"}}
+                        span{class:"loadsub",style:"display:block;margin-top:6px;","{dl_txt}"}
+                    }
+                    button{class:"b2",style:"opacity:.6;cursor:default;","{dling_txt}"}
+                }
+                if !downloading&&has_setup{
+                    button{class:"b2",onclick:move|_|StartUpdate(st.clone()),"{now_txt}"}
+                }
+                if !downloading&&!has_setup{
+                    button{class:"b2",onclick:move|_|open_url(&html),"{goto_txt}"}
+                }
+                div{style:"height:10px;flex-shrink:0;"}
+                button{class:"g",style:"width:100%;",onclick:move|_|st.write().show_update_dialog=false,"{later_txt}"}
+            }
+        }
+    }
+}
+
+// ── SettingsDialog（设置弹窗）──────────────────────────────────────────────────
+
+#[component]
+fn SettingsDialog(st:Signal<AppState>)->Element{
+    if!st.read().show_settings{return rsx!{}}
+    let L=st.read().lang;
+    let title=i18n::t(L,"set.title").to_string();
+    let done_txt=i18n::t(L,"set.done").to_string();
+    rsx!{
+        // 层级低于更新弹窗（1100），检查到新版本时更新弹窗盖在上面
+        div{class:"mask",style:"z-index:1090;",
+            onclick:move|_|st.write().show_settings=false,
+            div{class:"dialog",
+                onclick:move|e|e.stop_propagation(),
+                div{class:"row between",style:"margin-bottom:14px;",
+                    span{class:"dtitle","{title}"}
+                    button{class:"g",onclick:move|_|st.write().show_settings=false,"{done_txt}"}
+                }
+                div{style:"flex:1;overflow:auto;min-height:0;",SettingsBody{st:st.clone()}}
+            }
         }
     }
 }
 
 // ── PreviewModal ───────────────────────────────────────────────────────────────
 
-// 更新提示弹窗
-#[component]
-fn UpdateDialog(st:Signal<AppState>)->Element{
-    if!st.read().show_update_dialog{return rsx!{}}
-    let info=match st.read().update_info.clone(){Some(i)=>i,None=>return rsx!{}};
-    let downloading=st.read().update_downloading;
-    let progress=st.read().update_progress;
-    let err=st.read().update_error.clone();
-    let has_setup=info.setup_url.is_some();
-    let cur=updater::CURRENT_VERSION.to_string();
-    let notes_text=if info.notes.trim().is_empty(){"（此版本未提供更新说明）".to_string()}else{info.notes.clone()};
-    let notes_html=render_markdown(&notes_text);
-    let new_ver=info.version.clone();
-    let html=info.html_url.clone();
-
-    rsx!{
-        div{style:"position:fixed;inset:0;z-index:1100;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;",
-            onclick:move|_|{if!downloading{st.write().show_update_dialog=false;}},
-            div{style:"background:#fff;border-radius:14px;padding:24px;width:min(92vw,520px);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,0.25);",
-                onclick:move|e|e.stop_propagation(),
-                div{style:"display:flex;align-items:center;gap:10px;margin-bottom:4px;",
-                    div{style:"width:10px;height:10px;border-radius:5px;background:#7c5cff;"}
-                    span{style:"font-size:18px;font-weight:700;color:#1c1e2e;","发现新版本"}
-                }
-                span{style:"font-size:13px;color:#828698;margin-bottom:14px;","v{cur}  →  v{new_ver}"}
-                div{style:"flex:1;overflow:auto;background:#f8f9fd;border:1px solid #e8eaf2;border-radius:10px;padding:12px;margin-bottom:16px;font-size:13px;color:#1c1e2e;",
-                    dangerous_inner_html:"{notes_html}"
-                }
-                if!err.is_empty(){
-                    div{style:"font-size:12.5px;color:#e14646;margin-bottom:10px;","{err}"}
-                }
-                if downloading{
-                    div{style:"margin-bottom:6px;",
-                        div{style:"height:8px;background:#f0f1f6;border-radius:4px;overflow:hidden;",
-                            div{style:"height:100%;width:{progress}%;background:#7c5cff;border-radius:4px;"}}
-                        span{style:"font-size:12px;color:#828698;margin-top:6px;display:block;","正在下载更新… {progress}%"}
-                    }
-                    button{class:"b2",style:"opacity:0.6;cursor:default;","下载中…"}
-                }
-                if !downloading && has_setup{
-                    button{class:"b2",onclick:move|_|StartUpdate(st.clone()),"立即更新"}
-                }
-                if !downloading && !has_setup{
-                    button{class:"b2",onclick:move|_|open_url(&html),"前往下载"}
-                }
-                div{style:"height:10px;"}
-                button{class:"g",style:"width:100%;",
-                    onclick:move|_|st.write().show_update_dialog=false,"稍后再说"}
-            }
-        }
-    }
-}
-
 #[component]
 fn PreviewModal(st:Signal<AppState>)->Element{
     if!st.read().show_popup{return rsx!{}}
+    let L=st.read().lang;
     let uri=st.read().popup_uri.clone();let dims=st.read().popup_dims;
     let zoom=st.read().popup_zoom;let pan=st.read().popup_pan;
-    let title=format!("原图预览 {}x{}  ·  {:.0}%",dims[0],dims[1],zoom*100.0);
+    let title=i18n::tf(L,"pv.title",&[("w",&dims[0].to_string()),("h",&dims[1].to_string()),("p",&format!("{:.0}",zoom*100.0))]);
+    let hint=i18n::t(L,"pv.hint").to_string();
 
     // 拖拽平移用本地状态
     let mut dragging=use_signal(||false);
@@ -1081,22 +1297,21 @@ fn PreviewModal(st:Signal<AppState>)->Element{
     let transform=format!("translate({}px,{}px) scale({})",pan[0],pan[1],zoom);
 
     rsx!{
-        div{style:"position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;",
+        div{class:"mask",style:"z-index:1000;",
             onclick:move|_|st.write().show_popup=false,
-            div{style:"background:#141418;border-radius:12px;padding:16px;width:min(95vw,1400px);max-height:95vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,0.5);",
+            div{class:"pvbox",
                 onclick:move|e|e.stop_propagation(),
-                div{style:"display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;",
-                    span{style:"font-size:14px;color:#ccc;","{title}"}
-                    div{style:"flex:1;"}
-                    // 缩放控件
-                    div{style:"display:flex;align-items:center;gap:6px;",
-                        button{class:"g",onclick:move|_|{let z=st.read().popup_zoom;st.write().popup_zoom=clamp_zoom(z/1.2);},"➖"}
-                        button{class:"g",onclick:move|_|{let z=st.read().popup_zoom;st.write().popup_zoom=clamp_zoom(z*1.2);},"➕"}
-                        button{class:"g",onclick:move|_|{st.write().popup_zoom=1.0;st.write().popup_pan=[0.0,0.0];},"⤢ 1:1"}
+                div{class:"row",style:"justify-content:space-between;margin-bottom:8px;",
+                    span{class:"pvtitle","{title}"}
+                    div{class:"pvctrls",
+                        // 缩放控件
+                        button{class:"pvbtn",onclick:move|_|{let z=st.read().popup_zoom;st.write().popup_zoom=clamp_zoom(z/1.2);},"➖"}
+                        button{class:"pvbtn",onclick:move|_|{let z=st.read().popup_zoom;st.write().popup_zoom=clamp_zoom(z*1.2);},"➕"}
+                        button{class:"pvbtn",onclick:move|_|{st.write().popup_zoom=1.0;st.write().popup_pan=[0.0,0.0];},"⤢ 1:1"}
+                        button{class:"pvbtn",onclick:move|_|st.write().show_popup=false,"✕"}
                     }
-                    button{class:"g",onclick:move|_|st.write().show_popup=false,"✕"}
                 }
-                div{style:"flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;background:repeating-conic-gradient(#e8e8ee 0% 25%,#d4d4da 0% 50%) 0 0 / 32px 32px;",
+                div{class:"pvstage",
                     img{src:"{uri}",
                         style:"max-width:100%;max-height:80vh;object-fit:contain;transform-origin:0 0;transform:{transform};cursor:{cursor};user-select:none;-webkit-user-drag:none;",
                         onwheel:move|e|{
@@ -1124,7 +1339,7 @@ fn PreviewModal(st:Signal<AppState>)->Element{
                         onmouseleave:move|_|{dragging.set(false);},
                     }
                 }
-                div{style:"margin-top:8px;font-size:11.5px;color:#828698;text-align:center;","滚轮缩放 · 放大后可拖动查看 · 按 ✕ 或点击空白处关闭"}
+                div{class:"pvhint","{hint}"}
             }
         }
     }
@@ -1133,14 +1348,15 @@ fn PreviewModal(st:Signal<AppState>)->Element{
 // ── Handlers ────────────────────────────────────────────────────────────────────
 
 fn on_gen(mut st:Signal<AppState>){
+    let L=st.read().lang;
     let mut s=st.write();
     if s.loading{return}
-    if s.cfg.api_key.trim().is_empty(){s.error="未设置 API Key，请先在\"设置\"里填写。".to_string();return}
-    if s.prompt.trim().is_empty(){s.error="提示词不能为空。".to_string();return}
-    if s.mode==Mode::Image&&cur_input(&s).is_none(){s.error="图生图模式下需要提供输入图片。".to_string();return}
+    if s.cfg.api_key.trim().is_empty(){s.error=i18n::t(L,"err.nokey").to_string();return}
+    if s.prompt.trim().is_empty(){s.error=i18n::t(L,"err.noprompt").to_string();return}
+    if s.mode==Mode::Image&&cur_input(&s).is_none(){s.error=i18n::t(L,"err.noinput").to_string();return}
     let size=resolved_size(&s);let ratio=resolved_ratio(&s);let input=cur_input(&s);let prompt=s.prompt.clone();
-    let model=MODELS[s.model_index].1.to_string();let fmt=if s.out_fmt==OutFmt::Url{"url"}else{"b64_json"};
-    s.loading=true;s.error.clear();s.notice_text.clear();s.gen_elapsed=0.0;
+    let model=MODELS[s.model_index].0.to_string();let fmt=if s.out_fmt==OutFmt::Url{"url"}else{"b64_json"};
+    s.loading=true;s.error.clear();s.notice=None;s.gen_elapsed=0.0;
     s.cfg.last_prompt=s.prompt.clone();s.cfg.model=model.clone();
     s.cfg.output_format=fmt.to_string();s.cfg.mode=if s.mode==Mode::Text{"text".to_string()}else{"image".to_string()};
     // 2.1 档位尺寸存档位/比例（last_size 存精确像素便于展示与旧版回退）
@@ -1155,10 +1371,11 @@ fn on_gen(mut st:Signal<AppState>){
     });
 }
 fn on_gen_video(mut st:Signal<AppState>){
+    let L=st.read().lang;
     let mut s=st.write();
     if s.video_loading{return}
-    if s.cfg.api_key.trim().is_empty(){s.video_error="未设置 API Key，请先在\"设置\"里填写。".to_string();return}
-    if s.video_prompt.trim().is_empty(){s.video_error="提示词不能为空。".to_string();return}
+    if s.cfg.api_key.trim().is_empty(){s.video_error=i18n::t(L,"err.nokey").to_string();return}
+    if s.video_prompt.trim().is_empty(){s.video_error=i18n::t(L,"err.noprompt").to_string();return}
     let model=cur_video_model(&s).to_string();
     let v25=model!=api::MODEL_VIDEO_V20;
     let flash=model==api::MODEL_VIDEO_V25_FLASH;
@@ -1172,19 +1389,19 @@ fn on_gen_video(mut st:Signal<AppState>){
         let videos:Vec<String>=s.v25_videos.iter().map(|u|u.trim().to_string()).filter(|u|!u.is_empty()).collect();
         match s.v25_mode{
             V25Mode::Keyframe=>{
-                if first.is_empty()&&last.is_empty(){s.video_error="首尾帧模式至少需要提供首帧或尾帧图片 URL".to_string();return}
+                if first.is_empty()&&last.is_empty(){s.video_error=i18n::t(L,"err.kf").to_string();return}
             }
             V25Mode::Reference=>{
                 if images.is_empty()&&audios.is_empty()&&videos.is_empty(){
-                    s.video_error="参考生成模式至少需要一种参考素材（图片 / 音频 / 视频）".to_string();return
+                    s.video_error=i18n::t(L,"err.ref").to_string();return
                 }
             }
             V25Mode::Text=>{}
         }
         // Flash 专属限制：图片参考最多 5 张、不支持视频参考
         if flash{
-            if images.len()>5{s.video_error="Flash 版参考图片最多 5 张（当前已添加超出，请移除多余的图片）".to_string();return}
-            if !videos.is_empty(){s.video_error="Flash 版不支持视频参考素材，请移除视频或切换到 Agnes Video 2.5".to_string();return}
+            if images.len()>5{s.video_error=i18n::t(L,"err.flashimg").to_string();return}
+            if !videos.is_empty(){s.video_error=i18n::t(L,"err.flashvid").to_string();return}
         }
         api::VideoKind::V25{
             mode:match s.v25_mode{V25Mode::Text=>api::V25Mode::Text,V25Mode::Keyframe=>api::V25Mode::Keyframe,V25Mode::Reference=>api::V25Mode::Reference},
@@ -1201,7 +1418,7 @@ fn on_gen_video(mut st:Signal<AppState>){
         let min_imgs=if s.vmode==VMode::Text{0}else if s.vmode==VMode::Image{1}else{2};
         let valid:Vec<String>=s.video_image_urls.iter().map(|u|u.trim().to_string()).filter(|u|!u.is_empty()).collect();
         if need_imgs&&valid.len()<min_imgs{
-            s.video_error=if s.vmode==VMode::Image{"图生视频需要 1 张图片 URL".to_string()}else{"该模式至少需要 2 张图片 URL".to_string()};
+            s.video_error=if s.vmode==VMode::Image{i18n::t(L,"err.1img").to_string()}else{i18n::t(L,"err.2img").to_string()};
             return;
         }
         let(w,h)=video_dims(&s);let frames=video_frames(&s);let fps=video_fps(&s);
@@ -1212,7 +1429,7 @@ fn on_gen_video(mut st:Signal<AppState>){
 
     let prompt=s.video_prompt.clone();
     s.video_loading=true;s.video_error.clear();s.video_elapsed=0.0;s.video_progress=0.0;
-    s.video_msg="提交任务中…".to_string();s.video_job=None;
+    s.video_msg=i18n::t(s.lang,"vs.submit").to_string();s.video_job=None;
     // 持久化视频配置
     s.cfg.video_model=model.clone();
     s.cfg.last_video_prompt=prompt.clone();
@@ -1246,15 +1463,13 @@ fn on_gen_video(mut st:Signal<AppState>){
 
 #[component]
 fn VideoSidePanel(st:Signal<AppState>)->Element{
+    let L=st.read().lang;
     let loading=st.read().video_loading;
-    let btn_op=if loading{"0.6"}else{"1"};
     let v25=is_video25(&st.read());
     let vmidx=st.read().vmodel_index;
     let sidx=st.read().vsize_index;
     let didx=st.read().vduration_index;
     let vm=st.read().vmode.clone();
-    let err=st.read().video_error.clone();
-    let ntxt=st.read().notice_text.clone();let ncol=st.read().notice_color.clone();
     let urls=st.read().video_image_urls.clone();
     let url_input=st.read().video_url_input.clone();
     let secs=video_seconds(&st.read());
@@ -1270,40 +1485,41 @@ fn VideoSidePanel(st:Signal<AppState>)->Element{
     let v25_vids=st.read().v25_videos.clone();
     let v25_in=st.read().v25_input.clone();
     let v25flash=is_video25_flash(&st.read());
+    let reset=st.read().reset_token;
+    let video_prompt=st.read().video_prompt.clone();
+    let video_neg=st.read().video_neg.clone();
     let prompt_ph=if v25m==V25Mode::Reference{
-        if v25flash{"描述视频内容，可用 <Picture 1>、<Audio 1> 指代参考素材…"}
-        else{"描述视频内容，可用 <Picture 1>、<Audio 1>、<Video 1> 指代参考素材…"}
-    }else{
-        "描述视频内容：[主体与场景]+[动作与变化]+[镜头语言]+[视觉风格]+[声音]"
-    };
-    let ref_hint=if v25flash{
-        "图片 / 音频 URL 需公网可访问；Flash 版图片参考最多 5 张、不支持视频参考；提示词中用 <Picture 1>、<Audio 1> 指代"
-    }else{
-        "图片 / 音频 / 视频 URL 需公网可访问；提示词中用 <Picture 1>、<Audio 1>、<Video 1> 指代"
-    };
+        if v25flash{i18n::t(L,"vid.ph.refflash")}else{i18n::t(L,"vid.ph.reffull")}
+    }else{i18n::t(L,"vid.ph")}.to_string();
+    let ref_hint=if v25flash{i18n::t(L,"v25.refhintflash")}else{i18n::t(L,"v25.refhint")}.to_string();
 
     let mut vmopts:Vec<Element>=Vec::new();
-    for(i,(nm,_))in VIDEO_MODELS.iter().enumerate(){vmopts.push(rsx!{option{selected:i==vmidx,value:"{i}","{nm}"}});}
+    for(i,(_,b))in VIDEO_MODELS.iter().enumerate(){vmopts.push(rsx!{option{selected:i==vmidx,value:"{i}","{b.l(L)}"}});}
     let mut sopts:Vec<Element>=Vec::new();
-    for(i,(nm,_,_))in VIDEO_SIZE_PRESETS.iter().enumerate(){sopts.push(rsx!{option{selected:i==sidx,value:"{i}","{nm}"}});}
+    for(i,(b,_,_))in VIDEO_SIZE_PRESETS.iter().enumerate(){sopts.push(rsx!{option{selected:i==sidx,value:"{i}","{b.l(L)}"}});}
     let mut dopts:Vec<Element>=Vec::new();
-    for(i,(nm,_,_,_))in VIDEO_DURATION_PRESETS.iter().enumerate(){dopts.push(rsx!{option{selected:i==didx,value:"{i}","{nm}"}});}
+    for(i,(b,_,_))in VIDEO_DURATION_PRESETS.iter().enumerate(){dopts.push(rsx!{option{selected:i==didx,value:"{i}","{b.l(L)}"}});}
     let mut s25opts:Vec<Element>=Vec::new();
-    for(i,s)in V25_SECONDS.iter().enumerate(){s25opts.push(rsx!{option{selected:i==s25idx,value:"{i}","约 {s} 秒"}});}
+    for(i,s)in V25_SECONDS.iter().enumerate(){
+        let lab=i18n::tf(L,"v25.secopt",&[("s",s)]);
+        s25opts.push(rsx!{option{selected:i==s25idx,value:"{i}","{lab}"}});
+    }
     let mut ar25opts:Vec<Element>=Vec::new();
-    for(i,(nm,_))in V25_AR_PRESETS.iter().enumerate(){ar25opts.push(rsx!{option{selected:i==ar25idx,value:"{i}","{nm}"}});}
+    for(i,(b,_))in V25_AR_PRESETS.iter().enumerate(){ar25opts.push(rsx!{option{selected:i==ar25idx,value:"{i}","{b.l(L)}"}});}
 
     let mode_sel=match vm{VMode::Text=>0,VMode::Image=>1,VMode::Multi=>2,VMode::Keyframes=>3};
     let v25_mode_sel=match v25m{V25Mode::Text=>0,V25Mode::Keyframe=>1,V25Mode::Reference=>2};
+    let v25_mode_opts=vec![i18n::t(L,"v25.t2v").to_string(),i18n::t(L,"v25.kf").to_string(),i18n::t(L,"v25.ref").to_string()];
+    let v20_mode_opts=vec![i18n::t(L,"v20.t2v").to_string(),i18n::t(L,"v20.i2v").to_string(),i18n::t(L,"v20.multi").to_string(),i18n::t(L,"v20.kf").to_string()];
 
     let mut url_items:Vec<Element>=Vec::new();
     for(i,u)in urls.iter().enumerate(){
         let idx=i;
         let label=format!("#{}",i+1);
         url_items.push(rsx!{
-            div{key:"u{idx}",style:"display:flex;align-items:center;gap:6px;margin-top:4px;",
-                span{style:"font-size:12px;color:#828698;flex-shrink:0;width:22px;","{label}"}
-                span{style:"font-size:12px;color:#1c1e2e;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;","{u}"}
+            div{key:"u{idx}",class:"urlitem",
+                span{class:"ulbl","{label}"}
+                span{class:"utxt","{u}"}
                 button{class:"g",style:"padding:2px 8px;",onclick:move|_|{st.write().video_image_urls.remove(idx);},"✕"}
             }
         });
@@ -1312,147 +1528,173 @@ fn VideoSidePanel(st:Signal<AppState>)->Element{
     // 2.5 参考素材列表（图片 / 音频 / 视频 三组合并展示）
     let mut v25_items:Vec<Element>=Vec::new();
     for(i,u)in v25_imgs.iter().enumerate(){
-        let idx=i;let label=format!("图 #{}",i+1);
+        let idx=i;
+        let label=i18n::tf(L,"v25.lblimg",&[("n",&(i+1).to_string())]);
         v25_items.push(rsx!{
-            div{key:"v25img{idx}",style:"display:flex;align-items:center;gap:6px;margin-top:4px;",
-                span{style:"font-size:12px;color:#828698;flex-shrink:0;width:38px;","{label}"}
-                span{style:"font-size:12px;color:#1c1e2e;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;","{u}"}
+            div{key:"v25img{idx}",class:"urlitem",
+                span{class:"ulbl","{label}"}
+                span{class:"utxt","{u}"}
                 button{class:"g",style:"padding:2px 8px;",onclick:move|_|{st.write().v25_images.remove(idx);},"✕"}
             }
         });
     }
     for(i,u)in v25_auds.iter().enumerate(){
-        let idx=i;let label=format!("音 #{}",i+1);
+        let idx=i;
+        let label=i18n::tf(L,"v25.lblaud",&[("n",&(i+1).to_string())]);
         v25_items.push(rsx!{
-            div{key:"v25aud{idx}",style:"display:flex;align-items:center;gap:6px;margin-top:4px;",
-                span{style:"font-size:12px;color:#828698;flex-shrink:0;width:38px;","{label}"}
-                span{style:"font-size:12px;color:#1c1e2e;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;","{u}"}
+            div{key:"v25aud{idx}",class:"urlitem",
+                span{class:"ulbl","{label}"}
+                span{class:"utxt","{u}"}
                 button{class:"g",style:"padding:2px 8px;",onclick:move|_|{st.write().v25_audios.remove(idx);},"✕"}
             }
         });
     }
     for(i,u)in v25_vids.iter().enumerate(){
-        let idx=i;let label=format!("视 #{}",i+1);
+        let idx=i;
+        let label=i18n::tf(L,"v25.lblvid",&[("n",&(i+1).to_string())]);
         v25_items.push(rsx!{
-            div{key:"v25vid{idx}",style:"display:flex;align-items:center;gap:6px;margin-top:4px;",
-                span{style:"font-size:12px;color:#828698;flex-shrink:0;width:38px;","{label}"}
-                span{style:"font-size:12px;color:#1c1e2e;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;","{u}"}
+            div{key:"v25vid{idx}",class:"urlitem",
+                span{class:"ulbl","{label}"}
+                span{class:"utxt","{u}"}
                 button{class:"g",style:"padding:2px 8px;",onclick:move|_|{st.write().v25_videos.remove(idx);},"✕"}
             }
         });
     }
 
-    rsx!{
-        div{style:"display:flex;flex-direction:column;width:384px;min-width:320px;max-width:480px;overflow-y:auto;padding:14px 16px;background:#ffffff;flex-shrink:0;",
+    let gen_btn=if loading{i18n::t(L,"img.wait").to_string()}else{format!("🎬  {}",i18n::t(L,"vid.gen"))};
+    // 文案常量
+    let t_kfcard=i18n::t(L,"v25.kfcard").to_string();
+    let t_kfhint=i18n::t(L,"v25.kfhint").to_string();
+    let t_first=i18n::t(L,"v25.first").to_string();
+    let t_last=i18n::t(L,"v25.last").to_string();
+    let t_refcard=i18n::t(L,"v25.refcard").to_string();
+    let t_addimg=i18n::t(L,"v25.addimg").to_string();
+    let t_addaud=i18n::t(L,"v25.addaud").to_string();
+    let t_addvid=i18n::t(L,"v25.addvid").to_string();
+    let t_fmt=i18n::t(L,"v25.fmt").to_string();
+    let t_ar=i18n::t(L,"v25.ar").to_string();
+    let t_secs=i18n::t(L,"v25.secs").to_string();
+    let t_imgcard=i18n::t(L,"v20.imgcard").to_string();
+    let t_imghint=i18n::t(L,"v20.imghint").to_string();
+    let t_add=i18n::t(L,"v20.add").to_string();
+    let t_sizecard=i18n::t(L,"v20.sizecard").to_string();
+    let t_durcard=i18n::t(L,"v20.durcard").to_string();
+    let t_neg=i18n::t(L,"vid.neg").to_string();
+    let t_negph=i18n::t(L,"vid.negph").to_string();
+    let t_frames=i18n::t(L,"v20.frames").to_string();
+    let vmode_lbl=i18n::t(L,"card.vmode").to_string();
+    let cur_hint=i18n::tf(L,"v20.cur",&[("w",&w.to_string()),("h",&h.to_string())]);
+    let est_hint=i18n::tf(L,"v20.est",&[("s",&secs)]);
 
-            Card{title:"模型",
+    rsx!{
+        div{class:"side",
+            div{class:"side-scroll",
+
+            Card{title:i18n::t(L,"card.model").to_string(),
                 select{class:"sel",onchange:move|e|{if let Ok(i)=e.value().parse::<usize>(){st.write().vmodel_index=i;}},value:"{vmidx}",{vmopts.into_iter()}}
-                div{style:"height:8px;"}div{class:"h","生成模式"}
+                div{class:"subh","{vmode_lbl}"}
                 if v25{
-                    SegBtns{st:st.clone(),sel:v25_mode_sel,opts:&["文生视频","首尾帧","参考生成"],on_set:move|i|st.write().v25_mode=match i{0=>V25Mode::Text,1=>V25Mode::Keyframe,_=>V25Mode::Reference}}
+                    SegBtns{sel:v25_mode_sel,opts:v25_mode_opts,on_set:move|i|st.write().v25_mode=match i{0=>V25Mode::Text,1=>V25Mode::Keyframe,_=>V25Mode::Reference}}
                 }else{
-                    SegBtns{st:st.clone(),sel:mode_sel,opts:&["文生视频","图生视频","多图视频","关键帧"],on_set:move|i|st.write().vmode=match i{0=>VMode::Text,1=>VMode::Image,2=>VMode::Multi,_=>VMode::Keyframes}}
+                    SegBtns{sel:mode_sel,opts:v20_mode_opts,on_set:move|i|st.write().vmode=match i{0=>VMode::Text,1=>VMode::Image,2=>VMode::Multi,_=>VMode::Keyframes}}
                 }
             }
 
-            Card{title:"提示词",
-                textarea{key:"vid-prompt-{st.read().reset_token}",class:"ta",placeholder:"{prompt_ph}",initial_value:"{st.read().video_prompt}",oninput:move|e|st.write().video_prompt=e.value()}
+            Card{title:i18n::t(L,"card.prompt").to_string(),
+                textarea{key:"vid-prompt-{reset}",class:"ta",placeholder:"{prompt_ph}",initial_value:"{video_prompt}",oninput:move|e|st.write().video_prompt=e.value()}
                 if!v25{
-                    div{style:"height:6px;"}div{class:"h","反向提示词（可选）"}
-                    textarea{key:"vid-neg-{st.read().reset_token}",class:"ta",style:"min-height:50px;",placeholder:"需要避免的内容…",initial_value:"{st.read().video_neg}",oninput:move|e|st.write().video_neg=e.value()}
+                    div{class:"subh","{t_neg}"}
+                    textarea{key:"vid-neg-{reset}",class:"ta",style:"min-height:50px;",placeholder:"{t_negph}",initial_value:"{video_neg}",oninput:move|e|st.write().video_neg=e.value()}
                 }
             }
 
             if v25{
                 // ── Video 2.5 参数 ──
                 if v25m==V25Mode::Keyframe{
-                    Card{title:"首尾帧（Keyframe）",
-                        div{style:"font-size:11.5px;color:#828698;margin-bottom:4px;","首帧与尾帧至少提供一个；仅给首帧 = 从首帧开始演绎，仅给尾帧 = 向尾帧过渡"}
-                        div{class:"h","首帧图片 URL"}
+                    Card{title:t_kfcard,
+                        div{class:"hint",style:"margin:0 0 6px;","{t_kfhint}"}
+                        div{class:"subh",style:"margin-top:0;","{t_first}"}
                         input{class:"ix",placeholder:"https://...",value:"{v25_first}",oninput:move|e|st.write().v25_first=e.value()}
-                        div{style:"height:6px;"}div{class:"h","尾帧图片 URL（可选）"}
+                        div{class:"subh","{t_last}"}
                         input{class:"ix",placeholder:"https://...",value:"{v25_last}",oninput:move|e|st.write().v25_last=e.value()}
                     }
                 }
                 if v25m==V25Mode::Reference{
-                    Card{title:"参考素材（Reference）",
-                        div{style:"font-size:11.5px;color:#828698;margin-bottom:4px;","{ref_hint}"}
-                        div{style:"display:flex;gap:8px;",
+                    Card{title:t_refcard,
+                        div{class:"hint",style:"margin:0 0 6px;","{ref_hint}"}
+                        div{class:"row",
                             input{class:"ix",style:"flex:1;",placeholder:"https://...",value:"{v25_in}",oninput:move|e|st.write().v25_input=e.value()}
                         }
-                        div{style:"display:flex;gap:6px;margin-top:6px;",
+                        div{class:"row",style:"margin-top:6px;",
                             button{class:"g",onclick:move|_|{
                                 let v=st.read().v25_input.trim().to_string();
                                 if!v.is_empty(){st.write().v25_images.push(v);st.write().v25_input.clear();}
-                            },"＋ 图片"}
+                            },"{t_addimg}"}
                             button{class:"g",onclick:move|_|{
                                 let v=st.read().v25_input.trim().to_string();
                                 if!v.is_empty(){st.write().v25_audios.push(v);st.write().v25_input.clear();}
-                            },"＋ 音频"}
+                            },"{t_addaud}"}
                             if!v25flash{
                                 button{class:"g",onclick:move|_|{
                                     let v=st.read().v25_input.trim().to_string();
                                     if!v.is_empty(){st.write().v25_videos.push(v);st.write().v25_input.clear();}
-                                },"＋ 视频"}
+                                },"{t_addvid}"}
                             }
                         }
                         {v25_items.into_iter()}
                     }
                 }
-                Card{title:"画幅与时长",
-                    div{class:"h","画幅比例（分辨率 720P）"}
+                Card{title:t_fmt,
+                    div{class:"subh",style:"margin-top:0;","{t_ar}"}
                     select{class:"sel",onchange:move|e|{if let Ok(i)=e.value().parse::<usize>(){st.write().v25_ar_index=i;}},value:"{ar25idx}",{ar25opts.into_iter()}}
-                    div{style:"height:6px;"}div{class:"h","时长"}
+                    div{class:"subh","{t_secs}"}
                     select{class:"sel",onchange:move|e|{if let Ok(i)=e.value().parse::<usize>(){st.write().v25_seconds_index=i;}},value:"{s25idx}",{s25opts.into_iter()}}
                 }
             }else{
                 // ── Video V2.0 参数 ──
                 if st.read().vmode!=VMode::Text{
-                    Card{title:"输入图片 URL",
-                        div{style:"font-size:11.5px;color:#828698;margin-bottom:4px;","视频 API 需要公网可访问的图片 URL（不支持本地文件）"}
-                        div{style:"display:flex;gap:8px;",
+                    Card{title:t_imgcard,
+                        div{class:"hint",style:"margin:0 0 6px;","{t_imghint}"}
+                        div{class:"row",
                             input{class:"ix",style:"flex:1;",placeholder:"https://...",value:"{url_input}",oninput:move|e|st.write().video_url_input=e.value()}
                             button{class:"g",onclick:move|_|{
                                 let v=st.read().video_url_input.trim().to_string();
                                 if!v.is_empty(){st.write().video_image_urls.push(v);st.write().video_url_input.clear();}
-                            },"添加"}
+                            },"{t_add}"}
                         }
                         {url_items.into_iter()}
                     }
                 }
 
-                Card{title:"画面尺寸",
+                Card{title:t_sizecard,
                     select{class:"sel",onchange:move|e|{if let Ok(i)=e.value().parse::<usize>(){st.write().vsize_index=i;}},value:"{sidx}",{sopts.into_iter()}}
                     if sidx==VIDEO_SIZE_PRESETS.len()-1{
-                        div{style:"display:flex;gap:8px;margin-top:4px;align-items:center;",
+                        div{class:"row",style:"margin-top:6px;",
                             input{class:"ix",style:"width:80px;text-align:center;",r#type:"number",min:64,max:4096,value:"{st.read().vw_custom}",oninput:move|e|{if let Ok(v)=e.value().parse::<i32>(){st.write().vw_custom=v.clamp(64,4096);}}}
-                            span{style:"color:#828698;","×"}
+                            span{style:"color:var(--text2);","×"}
                             input{class:"ix",style:"width:80px;text-align:center;",r#type:"number",min:64,max:4096,value:"{st.read().vh_custom}",oninput:move|e|{if let Ok(v)=e.value().parse::<i32>(){st.write().vh_custom=v.clamp(64,4096);}}}
                         }
                     }
-                    div{style:"margin-top:4px;font-size:12px;color:#828698;","当前：{w}×{h}（API 会自动归档到 480p/720p/1080p）"}
+                    div{class:"hint",style:"margin-top:6px;","{cur_hint}"}
                 }
 
-                Card{title:"时长",
+                Card{title:t_durcard,
                     select{class:"sel",onchange:move|e|{if let Ok(i)=e.value().parse::<usize>(){st.write().vduration_index=i;}},value:"{didx}",{dopts.into_iter()}}
                     if didx==VIDEO_DURATION_PRESETS.len(){
-                        div{style:"display:flex;gap:8px;margin-top:4px;align-items:center;",
+                        div{class:"row",style:"margin-top:6px;",
                             input{class:"ix",style:"width:90px;text-align:center;",r#type:"number",min:1,max:441,value:"{st.read().vframes_custom}",oninput:move|e|{if let Ok(v)=e.value().parse::<i32>(){st.write().vframes_custom=v.clamp(1,441);}}}
-                            span{style:"color:#828698;font-size:12px;","帧 @ 24fps"}
+                            span{style:"color:var(--text2);font-size:12px;","{t_frames}"}
                         }
                     }
-                    div{style:"margin-top:4px;font-size:12px;color:#828698;","预计时长：{secs} 秒（num_frames 需为 8n+1，≤441）"}
+                    div{class:"hint",style:"margin-top:6px;","{est_hint}"}
                 }
             }
-
-            div{style:"padding:0 2px;margin-top:2px;",
-                button{class:"b2",style:"opacity:{btn_op};",disabled:loading,onclick:move|_|on_gen_video(st.clone()),if loading{"生成中…"}else{"🎬  生成视频"}}
             }
-            if!err.is_empty(){div{class:"er","⚠ {err}"}}
-            if!ntxt.is_empty(){div{style:"font-size:12px;color:{ncol};margin-top:4px;","{ntxt}"}}
 
-            Card{title:"设置",SettingsBody{st:st.clone()}}
-            div{style:"height:6px;"}
+            // 生成按钮固定在侧栏底部，永远可见，不会被历史栏遮挡
+            div{class:"side-action",
+                button{class:"b2",disabled:loading,onclick:move|_|on_gen_video(st.clone()),"{gen_btn}"}
+            }
         }
     }
 }
@@ -1461,36 +1703,43 @@ fn VideoSidePanel(st:Signal<AppState>)->Element{
 
 #[component]
 fn VideoMainArea(st:Signal<AppState>)->Element{
+    let L=st.read().lang;
     if st.read().video_loading{
         let elapsed=st.read().video_elapsed;
         let progress=st.read().video_progress;
         let msg=st.read().video_msg.clone();
         let err=st.read().video_error.clone();
         let bar=progress.clamp(0.0,100.0) as f32;
-        let err_el=if!err.is_empty(){Some(rsx!{span{style:"font-size:12px;color:#e0a800;margin-top:6px;","⚠ {err}"}})}else{None};
+        let el_txt=i18n::tf(L,"vid.elapsed",&[("s",&format!("{elapsed:.1}")),("p",&format!("{progress:.0}"))]);
+        let err_el=if!err.is_empty(){Some(rsx!{span{class:"warnerr","⚠ {err}"}})}else{None};
+        let wait_txt=i18n::t(L,"vid.wait").to_string();
         return rsx!{
-            div{style:"flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f4f5fa;",
-                div{style:"width:48px;height:48px;border-radius:24px;background:#ebe6ff;display:flex;align-items:center;justify-content:center;margin-bottom:12px;",div{style:"width:28px;height:28px;border:3px solid #7c5cff;border-top-color:transparent;border-radius:14px;animation:s .8s linear infinite;"}}
-                span{style:"font-size:16px;font-weight:700;color:#1c1e2e;","{msg}"}
-                span{style:"font-size:12.5px;color:#828698;margin-top:4px;","已用时 {elapsed:.1} 秒 · {progress:.0}%"}
-                div{style:"width:280px;height:6px;background:#f5f6fc;border-radius:3px;margin-top:10px;overflow:hidden;",div{style:"width:{bar}%;height:100%;background:#7c5cff;border-radius:3px;transition:width .3s;"}}
+            div{class:"center",
+                div{class:"spinner",div{class:"spin"}}
+                span{class:"loadtitle","{msg}"}
+                span{class:"loadsub","{el_txt}"}
+                div{class:"bar",div{class:"barfill",style:"width:{bar}%;"}}
                 {err_el}
-                span{style:"font-size:12px;color:#828698;margin-top:8px;","视频生成通常需要 1~5 分钟，请耐心等待"}
+                span{class:"loadsub",style:"margin-top:10px;","{wait_txt}"}
             }
         };
     }
 
+    // 错误统一在主生成区展示，左侧不再显示任何报错
+    let err=st.read().video_error.clone();
+    if!err.is_empty(){
+        return rsx!{ErrorCard{st:st.clone(),error:err,on_dismiss:move|_|st.write().video_error.clear()}};
+    }
+
     let has_vid=!st.read().videos.is_empty();
     if!has_vid{
-        let err=st.read().video_error.clone();
-        if!err.is_empty(){
-            return rsx!{div{style:"flex:1;display:flex;align-items:center;justify-content:center;background:#f4f5fa;font-size:15px;color:#e14646;","⚠ {err}"}};
-        }
+        let emptyt_txt=i18n::t(L,"vid.emptyt").to_string();
+        let empty_txt=i18n::t(L,"vid.empty").to_string();
         return rsx!{
-            div{style:"flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f4f5fa;",
-                div{style:"width:56px;height:56px;border-radius:28px;background:#ebe6ff;border:1.5px solid #7c5cff;margin-bottom:14px;display:flex;align-items:center;justify-content:center;font-size:24px;","🎬"}
-                span{style:"font-size:19px;font-weight:700;color:#1c1e2e;","视频生成"}
-                span{style:"font-size:13px;color:#828698;margin-top:6px;","在左侧输入提示词，选择尺寸与时长后点击「生成视频」"}
+            div{class:"center",
+                div{class:"emptylogo","🎬"}
+                span{class:"emptyt","{emptyt_txt}"}
+                span{class:"emptys","{empty_txt}"}
             }
         };
     }
@@ -1502,36 +1751,45 @@ fn VideoMainArea(st:Signal<AppState>)->Element{
 
 #[component]
 fn VideoViewer(st:Signal<AppState>,entry:CachedVideo,index:usize)->Element{
-    let ntxt=st.read().notice_text.clone();let ncol=st.read().notice_color.clone();
+    let L=st.read().lang;
+    let notice=st.read().notice.clone();
     let has_url=!entry.video_url.is_empty();
     let url_act=entry.video_url.clone();
-    let info=format!("· {} · {} · {}秒",entry.size,entry.model,entry.seconds);
+    let info=i18n::tf(L,"vid.info",&[("size",&entry.size),("model",&entry.model),("sec",&entry.seconds)]);
+
+    let reg_txt=format!("🔄 {}",i18n::t(L,"act.reg"));
+    let open_txt=format!("🌐 {}",i18n::t(L,"act.openvid"));
+    let save_txt=format!("💾 {}",i18n::t(L,"act.save"));
+    let pline=format!("{}  {}",i18n::t(L,"viewer.prompt"),entry.prompt);
 
     let mut ar:Vec<Element>=vec![];
-    ar.push(rsx!{span{style:"font-size:12.5px;font-weight:700;color:#7c5cff;","{entry.model}"}});
-    ar.push(rsx!{span{style:"font-size:12.5px;color:#828698;","{info}"}});
+    ar.push(rsx!{span{class:"mmodel","{entry.model}"}});
+    ar.push(rsx!{span{class:"minfo","{info}"}});
     ar.push(rsx!{div{style:"flex:1;"}});
-    ar.push(rsx!{button{class:"g",onclick:move|_|on_gen_video(st.clone()),"🔄 重新生成"}});
-    if has_url{ar.push(rsx!{button{class:"g",onclick:move|_|open_url(&url_act),"🌐 打开原视频"}});}
-    ar.push(rsx!{button{class:"g",onclick:move|_|do_save_video(&mut st.write()),"💾 保存"}});
+    ar.push(rsx!{button{class:"g",onclick:move|_|on_gen_video(st.clone()),"{reg_txt}"}});
+    if has_url{ar.push(rsx!{button{class:"g",onclick:move|_|open_url(&url_act),"{open_txt}"}});}
+    ar.push(rsx!{button{class:"g",onclick:move|_|do_save_video(&mut st.write()),"{save_txt}"}});
 
-    let ntel=if!ntxt.is_empty(){Some(rsx!{div{style:"margin-top:4px;font-size:12px;color:{ncol};","{ntxt}"}})}else{None};
+    let ntel=notice.map(|n|{
+        let cls=nt_class(n.kind);let txt=n.text;
+        rsx!{div{class:"{cls}","{txt}"}}
+    });
 
     // 视频链接是公开 https URL，WebView2 可直接原生流式播放（与浏览器同机制）
     let vid_id=format!("agnes-vid-{index}");
     let src=entry.video_url.clone();
 
     rsx!{
-        div{style:"flex:1;display:flex;flex-direction:column;padding:20px;overflow:hidden;background:#f4f5fa;",
-            div{style:"flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;",
-                div{style:"background:#000;padding:10px;border-radius:14px;box-shadow:0 4px 18px rgba(0,0,0,0.06);display:inline-block;",
+        div{class:"main",
+            div{class:"stage",
+                div{class:"vidwrap",
                     video{id:"{vid_id}",src:"{src}",controls:true,preload:"auto",style:"max-width:70vw;max-height:calc(100vh - 300px);border-radius:8px;display:block;background:#000;"}
                 }
             }
-            div{style:"margin-top:8px;background:#ffffff;border:1px solid #e8eaf2;border-radius:14px;padding:14px;box-shadow:0 2px 10px rgba(0,0,0,0.04);",
-                div{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;",{ar.into_iter()}}
-                hr{style:"border:none;border-top:1px solid #e8eaf2;margin:6px 0 4px;"}
-                div{style:"font-size:12.5px;color:#1c1e2e;",span{style:"font-size:12px;color:#828698;","提示词  "}"{entry.prompt}"}
+            div{class:"meta",
+                div{class:"metatop",{ar.into_iter()}}
+                hr{class:"divider"}
+                div{class:"mprompt","{pline}"}
                 {ntel}
             }
         }

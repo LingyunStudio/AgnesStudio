@@ -73,7 +73,7 @@ fn gh_client(timeout: Duration) -> Result<reqwest::Client, String> {
         .http1_only()
         .user_agent(format!("agnes-studio/{}", CURRENT_VERSION))
         .build()
-        .map_err(|e| format!("创建 HTTP 客户端失败：{e}"))
+        .map_err(|e| format!("Failed to build HTTP client: {e}"))
 }
 
 /// 检查 GitHub 最新 release。返回 Ok(None) 表示无更新。
@@ -84,15 +84,15 @@ pub async fn check_latest() -> Result<Option<UpdateInfo>, String> {
         .header(reqwest::header::ACCEPT, "application/vnd.github+json")
         .send()
         .await
-        .map_err(|e| format!("请求 GitHub 失败：{e}"))?;
+        .map_err(|e| format!("GitHub request failed: {e}"))?;
     let status = resp.status();
     if !status.is_success() {
-        return Err(format!("GitHub 返回 HTTP {status}"));
+        return Err(format!("GitHub returned HTTP {status}"));
     }
     let rel: GithubRelease = resp
         .json()
         .await
-        .map_err(|e| format!("解析 GitHub 响应失败：{e}"))?;
+        .map_err(|e| format!("Failed to parse GitHub response: {e}"))?;
 
     if !is_newer(&rel.tag_name, CURRENT_VERSION) {
         return Ok(None);
@@ -134,7 +134,7 @@ pub async fn download_setup<F: Fn(u64, u64)>(
                 let mut stream = resp.bytes_stream();
                 let mut file = tokio::fs::File::create(dest)
                     .await
-                    .map_err(|e| format!("创建临时文件失败：{e}"))?;
+                    .map_err(|e| format!("Failed to create temp file: {e}"))?;
                 let mut got: u64 = 0;
                 let mut ok = true;
                 while let Some(chunk) = stream.next().await {
@@ -149,7 +149,7 @@ pub async fn download_setup<F: Fn(u64, u64)>(
                             progress(got, total);
                         }
                         Err(e) => {
-                            last_err = format!("下载中断：{e}");
+                            last_err = format!("Download interrupted: {e}");
                             ok = false;
                             break;
                         }
@@ -162,15 +162,15 @@ pub async fn download_setup<F: Fn(u64, u64)>(
                 }
             }
             Ok(resp) => {
-                last_err = format!("下载失败：HTTP {}", resp.status());
+                last_err = format!("Download failed: HTTP {}", resp.status());
             }
             Err(e) => {
-                last_err = format!("下载失败：{e}");
+                last_err = format!("Download failed: {e}");
             }
         }
     }
     Err(if last_err.is_empty() {
-        "下载失败".to_string()
+        "Download failed".to_string()
     } else {
         last_err
     })

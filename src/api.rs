@@ -92,14 +92,14 @@ fn build_body(p: &GenParams) -> Request {
 
 pub async fn generate(p: GenParams) -> Result<GenResult, String> {
     if p.api_key.trim().is_empty() {
-        return Err("未设置 API Key，请先在“设置”里填写。".to_string());
+        return Err("API key is not set. Add it under Settings.".to_string());
     }
     if p.prompt.trim().is_empty() {
-        return Err("提示词不能为空。".to_string());
+        return Err("Prompt cannot be empty.".to_string());
     }
 
     let body = serde_json::to_string(&build_body(&p))
-        .map_err(|e| format!("序列化请求失败：{e}"))?;
+        .map_err(|e| format!("Failed to serialize request: {e}"))?;
     let resp = send_retry(
         ENDPOINT,
         reqwest::Method::POST,
@@ -114,26 +114,26 @@ pub async fn generate(p: GenParams) -> Result<GenResult, String> {
     let text = resp
         .text()
         .await
-        .map_err(|e| format!("读取响应失败：{e}"))?;
+        .map_err(|e| format!("Failed to read response: {e}"))?;
     if !status.is_success() {
         return Err(format!("HTTP {status}\n{text}"));
     }
 
     let parsed: GenResponse =
-        serde_json::from_str(&text).map_err(|e| format!("解析响应失败：{e}\n原始：{text}"))?;
+        serde_json::from_str(&text).map_err(|e| format!("Failed to parse response: {e}\nRaw: {text}"))?;
 
     let data = parsed
         .data
         .into_iter()
         .next()
-        .ok_or_else(|| "响应中没有 data。".to_string())?;
+        .ok_or_else(|| "Response contains no data.".to_string())?;
 
     if let Some(url) = data.url.filter(|s| !s.is_empty()) {
         let bytes = send_retry(&url, reqwest::Method::GET, "", None, 3, Duration::from_secs(360))
             .await?
             .bytes()
             .await
-            .map_err(|e| format!("读取图片字节失败：{e}"))?
+            .map_err(|e| format!("Failed to read image bytes: {e}"))?
             .to_vec();
         Ok(GenResult {
             url: Some(url),
@@ -142,13 +142,13 @@ pub async fn generate(p: GenParams) -> Result<GenResult, String> {
     } else if let Some(b64) = data.b64_json.filter(|s| !s.is_empty()) {
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(&b64)
-            .map_err(|e| format!("解码 Base64 失败：{e}"))?;
+            .map_err(|e| format!("Failed to decode base64: {e}"))?;
         Ok(GenResult {
             url: None,
             bytes,
         })
     } else {
-        Err("响应中既没有 url 也没有 b64_json。".to_string())
+        Err("Response contains neither url nor b64_json.".to_string())
     }
 }
 
@@ -183,7 +183,7 @@ fn build_client(timeout: Duration) -> Result<reqwest::Client, String> {
         .tcp_keepalive(Duration::from_secs(30))
         .user_agent("agnes-studio/0.1")
         .build()
-        .map_err(|e| format!("创建 HTTP 客户端失败：{e}"))
+        .map_err(|e| format!("Failed to build HTTP client: {e}"))
 }
 
 /// 对请求发送做自动重试。仅在发送/读取阶段失败时重试；拿到响应后交由调用方
@@ -224,7 +224,7 @@ async fn send_retry(
         }
     }
     Err(format!(
-        "请求发送失败（已重试 {attempts} 次）：{}",
+        "Request failed after {attempts} attempts: {}",
         last.unwrap_or_default()
     ))
 }
@@ -540,16 +540,16 @@ fn build_video25_body(p: &VideoParams) -> Video25Request {
 
 pub async fn create_video_task(p: &VideoParams) -> Result<VideoTask, String> {
     if p.api_key.trim().is_empty() {
-        return Err("未设置 API Key，请先在\"设置\"里填写。".to_string());
+        return Err("API key is not set. Add it under Settings.".to_string());
     }
     if p.prompt.trim().is_empty() {
-        return Err("提示词不能为空。".to_string());
+        return Err("Prompt cannot be empty.".to_string());
     }
     let body = match &p.kind {
         VideoKind::V20 { .. } => serde_json::to_string(&build_video_body(p)),
         VideoKind::V25 { .. } => serde_json::to_string(&build_video25_body(p)),
     }
-    .map_err(|e| format!("序列化请求失败：{e}"))?;
+    .map_err(|e| format!("Failed to serialize request: {e}"))?;
     let resp = send_retry(
         VIDEO_CREATE,
         reqwest::Method::POST,
@@ -564,12 +564,12 @@ pub async fn create_video_task(p: &VideoParams) -> Result<VideoTask, String> {
     let text = resp
         .text()
         .await
-        .map_err(|e| format!("读取响应失败：{e}"))?;
+        .map_err(|e| format!("Failed to read response: {e}"))?;
     if !status.is_success() {
-        return Err(format!("创建任务失败：HTTP {status}\n{text}"));
+        return Err(format!("Task creation failed: HTTP {status}\n{text}"));
     }
     let parsed: VideoCreateResp =
-        serde_json::from_str(&text).map_err(|e| format!("解析响应失败：{e}\n原始：{text}"))?;
+        serde_json::from_str(&text).map_err(|e| format!("Failed to parse response: {e}\nRaw: {text}"))?;
 
     // V2.0：video_id + task_id；2.5：仅 id。统一取第一个非空值。
     let video_id = parsed
@@ -578,7 +578,7 @@ pub async fn create_video_task(p: &VideoParams) -> Result<VideoTask, String> {
         .filter(|s| !s.is_empty())
         .or(parsed.id.as_deref().filter(|s| !s.is_empty()))
         .map(|s| s.to_string())
-        .ok_or_else(|| format!("响应中缺少 video_id。\n原始：{text}"))?;
+        .ok_or_else(|| format!("Response contains no video_id.\nRaw: {text}"))?;
     let task_id = parsed
         .task_id
         .as_deref()
@@ -621,13 +621,14 @@ pub async fn fetch_video_status(
     let resp = send_retry(&url, reqwest::Method::GET, api_key, None, 3, Duration::from_secs(60))
         .await?;
     let status = resp.status();
-    let text = resp.text().await.map_err(|e| format!("读取响应失败：{e}"))?;
+    let text = resp.text().await.map_err(|e| format!("Failed to read response: {e}"))?;
     if !status.is_success() {
-        return Err(format!("查询任务失败：HTTP {status}\n{text}"));
+        return Err(format!("Status query failed: HTTP {status}\n{text}"));
     }
     let parsed: VideoStatusResp =
-        serde_json::from_str(&text).map_err(|e| format!("解析响应失败：{e}\n原始：{text}"))?;
+        serde_json::from_str(&text).map_err(|e| format!("Failed to parse response: {e}\nRaw: {text}"))?;
 
+    // message 保留原始状态码（queued / in_progress / …），展示层按当前语言本地化
     let st = parsed.status.unwrap_or_default();
     let mut out = VideoStatus {
         done: false,
@@ -651,20 +652,15 @@ pub async fn fetch_video_status(
         }
         "failed" => {
             out.failed = true;
+            // 有错误详情用详情，没有则留空由展示层兜底
             out.message = parsed
                 .error
                 .as_ref()
                 .map(|e| error_message(e))
                 .filter(|s| !s.is_empty())
-                .unwrap_or_else(|| "生成失败".to_string());
+                .unwrap_or_default();
         }
-        _ => {
-            out.message = match st.as_str() {
-                "queued" => "排队中…".to_string(),
-                "in_progress" => "生成中…".to_string(),
-                _ => st,
-            };
-        }
+        _ => {}
     }
     Ok(out)
 }
@@ -695,10 +691,10 @@ pub async fn download_video(api_key: &str, url: &str) -> Result<Vec<u8>, String>
     let bytes = resp
         .bytes()
         .await
-        .map_err(|e| format!("读取视频字节失败：{e}"))?
+        .map_err(|e| format!("Failed to read video bytes: {e}"))?
         .to_vec();
     if !status.is_success() {
-        return Err(format!("下载视频失败：HTTP {status}"));
+        return Err(format!("Video download failed: HTTP {status}"));
     }
     // mp4 文件 4~8 字节处含 "ftyp" 标识；HTML 错误页首字节是 '<'
     let valid_mp4 = bytes.len() > 12
@@ -707,7 +703,7 @@ pub async fn download_video(api_key: &str, url: &str) -> Result<Vec<u8>, String>
     if !valid_mp4 {
         let snippet = String::from_utf8_lossy(&bytes[..bytes.len().min(80)]);
         return Err(format!(
-            "下载到的不是有效 mp4（Content-Type: {ctype}, {} 字节，开头：{snippet}）",
+            "Downloaded content is not a valid mp4 (Content-Type: {ctype}, {} bytes, head: {snippet})",
             bytes.len()
         ));
     }

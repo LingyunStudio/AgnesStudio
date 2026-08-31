@@ -5,6 +5,8 @@
 mod api;
 mod app;
 mod config;
+mod i18n;
+mod theme;
 mod updater;
 
 use dioxus::desktop::{Config, WindowBuilder};
