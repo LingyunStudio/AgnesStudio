@@ -82,6 +82,9 @@ const V25_AR_PRESETS: &[(Bi, &str)] = &[
 // Video 2.5：时长 "4"–"12" 秒（API 要求字符串）
 const V25_SECONDS: &[&str] = &["4", "5", "6", "7", "8", "9", "10", "11", "12"];
 
+/// 顶栏设置按钮的齿轮图标（单色 SVG，跟随按钮文字色，17px 撑满按钮）
+const GEAR_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><path d="M19.14 12.94c.04-.31.06-.62.06-.94s-.02-.63-.06-.94l2.11-1.65a.5.5 0 0 0 .12-.64l-2-3.46a.5.5 0 0 0-.61-.22l-2.49 1a7.3 7.3 0 0 0-1.63-.94l-.38-2.65A.5.5 0 0 0 14 2h-4a.5.5 0 0 0-.5.42l-.38 2.65a7.3 7.3 0 0 0-1.63.94l-2.49-1a.5.5 0 0 0-.61.22l-2 3.46a.5.5 0 0 0 .12.64l2.11 1.65a7.07 7.07 0 0 0 0 1.88l-2.11 1.65a.5.5 0 0 0-.12.64l2 3.46c.14.24.42.34.61.22l2.49-1c.52.4 1.05.72 1.63.94l.38 2.65c.04.24.25.42.5.42h4c.25 0 .46-.18.5-.42l.38-2.65a7.3 7.3 0 0 0 1.63-.94l2.49 1c.19.12.47.02.61-.22l2-3.46a.5.5 0 0 0-.12-.64l-2.11-1.65ZM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"/></svg>"#;
+
 #[derive(Clone,Copy,PartialEq)]
 enum Workspace{Image,Video}
 #[derive(Clone,Copy,PartialEq)]
@@ -690,6 +693,7 @@ fn TopBar(st:Signal<AppState>)->Element{
     let theme_tip=match st.read().theme{ThemeMode::Light=>i18n::t(L,"th.light"),ThemeMode::Dark=>i18n::t(L,"th.dark"),ThemeMode::System=>i18n::t(L,"th.sys")}.to_string();
     let lang_lbl=if L==Lang::Zh{"EN"}else{"中"}.to_string();
     let set_tip=i18n::t(L,"set.title").to_string();
+    let gear_svg=GEAR_SVG;
     let on_img=move|_|st.write().workspace=Workspace::Image;
     let on_vid=move|_|st.write().workspace=Workspace::Video;
     let cycle_theme=move|_|{
@@ -724,7 +728,7 @@ fn TopBar(st:Signal<AppState>)->Element{
             span{class:"link",onclick:move|_|open_url("https://github.com/LingyunStudio/AgnesStudio"),"GitHub"}
             button{class:"iconbtn",title:"{theme_tip}",onclick:cycle_theme,"{theme_icon}"}
             button{class:"iconbtn",style:"font-weight:800;font-size:12px;",title:"Language",onclick:toggle_lang,"{lang_lbl}"}
-            button{class:"iconbtn",title:"{set_tip}",onclick:move|_|st.write().show_settings=true,"⚙"}
+            button{class:"iconbtn",title:"{set_tip}",onclick:move|_|st.write().show_settings=true,dangerous_inner_html:"{gear_svg}"}
             div{class:"keychip",
                 div{class:"dot",style:"background:{dot_c};"}
                 span{"{key_txt}"}
@@ -1285,8 +1289,12 @@ fn PreviewModal(st:Signal<AppState>)->Element{
     let L=st.read().lang;
     let uri=st.read().popup_uri.clone();let dims=st.read().popup_dims;
     let zoom=st.read().popup_zoom;let pan=st.read().popup_pan;
-    let title=i18n::tf(L,"pv.title",&[("w",&dims[0].to_string()),("h",&dims[1].to_string()),("p",&format!("{:.0}",zoom*100.0))]);
+    let title=i18n::tf(L,"pv.title",&[("w",&dims[0].to_string()),("h",&dims[1].to_string())]);
     let hint=i18n::t(L,"pv.hint").to_string();
+    let zout_tip=i18n::t(L,"pv.out").to_string();
+    let zin_tip=i18n::t(L,"pv.in").to_string();
+    let zfit_tip=i18n::t(L,"pv.fit").to_string();
+    let close_tip=i18n::t(L,"pv.close").to_string();
 
     // 拖拽平移用本地状态
     let mut dragging=use_signal(||false);
@@ -1294,26 +1302,31 @@ fn PreviewModal(st:Signal<AppState>)->Element{
 
     let clamp_zoom=|z:f32|z.clamp(0.2,12.0);
     let cursor=if zoom>1.0{"grab"}else{"default"};
-    let transform=format!("translate({}px,{}px) scale({})",pan[0],pan[1],zoom);
+    // 以图片中心为锚点缩放：img 绝对居中在舞台中央 + transform-origin:center，
+    // 缩放只围绕中心进行，平移量叠加在居中 translate 上（缩放时中心不动）
+    let transform=format!("translate(calc(-50% + {}px),calc(-50% + {}px)) scale({})",pan[0],pan[1],zoom);
+    let zoom_pct=format!("{:.0}%",zoom*100.0);
 
     rsx!{
         div{class:"mask",style:"z-index:1000;",
             onclick:move|_|st.write().show_popup=false,
             div{class:"pvbox",
                 onclick:move|e|e.stop_propagation(),
-                div{class:"row",style:"justify-content:space-between;margin-bottom:8px;",
+                div{class:"pvhead",
                     span{class:"pvtitle","{title}"}
-                    div{class:"pvctrls",
-                        // 缩放控件
-                        button{class:"pvbtn",onclick:move|_|{let z=st.read().popup_zoom;st.write().popup_zoom=clamp_zoom(z/1.2);},"➖"}
-                        button{class:"pvbtn",onclick:move|_|{let z=st.read().popup_zoom;st.write().popup_zoom=clamp_zoom(z*1.2);},"➕"}
-                        button{class:"pvbtn",onclick:move|_|{st.write().popup_zoom=1.0;st.write().popup_pan=[0.0,0.0];},"⤢ 1:1"}
-                        button{class:"pvbtn",onclick:move|_|st.write().show_popup=false,"✕"}
+                    div{style:"flex:1;"}
+                    // 缩放分段控件：[－][百分比·点击复位][＋]
+                    div{class:"pvseg",
+                        button{class:"pvbtn",title:"{zout_tip}",onclick:move|_|{let z=st.read().popup_zoom;st.write().popup_zoom=clamp_zoom(z/1.2);},"－"}
+                        span{class:"pvz",title:"{zfit_tip}",onclick:move|_|{let mut s=st.write();s.popup_zoom=1.0;s.popup_pan=[0.0,0.0];},"{zoom_pct}"}
+                        button{class:"pvbtn",title:"{zin_tip}",onclick:move|_|{let z=st.read().popup_zoom;st.write().popup_zoom=clamp_zoom(z*1.2);},"＋"}
                     }
+                    button{class:"pvbtn pvclose",title:"{close_tip}",onclick:move|_|st.write().show_popup=false,"✕"}
                 }
                 div{class:"pvstage",
                     img{src:"{uri}",
-                        style:"max-width:100%;max-height:80vh;object-fit:contain;transform-origin:0 0;transform:{transform};cursor:{cursor};user-select:none;-webkit-user-drag:none;",
+                        style:"transform:{transform};cursor:{cursor};",
+                        ondoubleclick:move|_|{let mut s=st.write();s.popup_zoom=1.0;s.popup_pan=[0.0,0.0];},
                         onwheel:move|e|{
                             let dy=e.delta().strip_units().y;
                             let z=st.read().popup_zoom;

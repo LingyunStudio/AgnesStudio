@@ -90,8 +90,6 @@ const VARS_LIGHT: &str = "color-scheme:light;
 --shadowlg:0 2px 6px rgba(20,20,30,.06),0 18px 52px rgba(20,20,30,.14);
 --backdrop:rgba(25,25,32,.32);
 --sel-menu:#ffffff;
---chk1:#e9e9ee;
---chk2:#dcdce2;
 --bar:linear-gradient(90deg,#4a4a50,#1d1d1f)";
 
 // ── CSS 变量（深色；dark 与 system@暗色媒体共用）─────────────────────────────
@@ -127,8 +125,6 @@ const VARS_DARK: &str = "color-scheme:dark;
 --shadowlg:0 2px 6px rgba(0,0,0,.45),0 18px 52px rgba(0,0,0,.55);
 --backdrop:rgba(0,0,0,.5);
 --sel-menu:#26262c;
---chk1:#22242c;
---chk2:#181a20;
 --bar:linear-gradient(90deg,#c9c9cf,#ffffff)";
 
 // ── 组件样式（引用上面的变量）───────────────────────────────────────────────
@@ -155,6 +151,7 @@ button{font-family:inherit}
 .link:hover{color:var(--text);text-decoration:underline}
 .iconbtn{width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border:none;background:var(--fill);border-radius:8px;cursor:pointer;font-size:14px;color:var(--text2);padding:0;flex-shrink:0}
 .iconbtn:hover{background:var(--fill-hover);color:var(--text)}
+.iconbtn svg{display:block}
 .chip{font-size:12px;font-weight:600;color:var(--text);background:var(--fill);padding:3px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
 .chip.pulse{animation:pulse 1.8s ease infinite}
 .chip.warn{background:var(--warn-weak);color:var(--warn)}
@@ -273,14 +270,23 @@ button{font-family:inherit}
 .notes pre{background:var(--fill-2);padding:8px 10px;border-radius:8px;overflow:auto}
 .notes img{max-width:100%}
 
-/* 图片预览弹窗（自带深色观感，不随主题） */
-.pvbox{background:rgba(22,22,26,.92);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:16px;width:min(95vw,1400px);max-height:95vh;display:flex;flex-direction:column;box-shadow:0 12px 48px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.08)}
-.pvtitle{font-size:14px;color:#c9ccd8;font-weight:600}
-.pvctrls{display:flex;align-items:center;gap:6px}
-.pvbtn{padding:5px 12px;border:1px solid rgba(255,255,255,.22);border-radius:8px;background:rgba(255,255,255,.06);color:#d5d8e2;font-size:12.5px;cursor:pointer}
-.pvbtn:hover{border-color:rgba(255,255,255,.45);color:#fff}
-.pvstage{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;background:repeating-conic-gradient(var(--chk1) 0% 25%,var(--chk2) 0% 50%) 0 0 / 32px 32px;border-radius:10px}
-.pvhint{margin-top:8px;font-size:11.5px;color:#7d8292;text-align:center}
+/* 图片预览弹窗（深色玻璃观感，不随主题）
+   缩放锚点在图片中心：img 绝对定位到舞台中心，transform-origin:center，
+   缩放只会围绕中心进行，平移量叠加在居中 translate 上 */
+.pvbox{background:rgba(19,19,24,.92);backdrop-filter:blur(24px) saturate(160%);-webkit-backdrop-filter:blur(24px) saturate(160%);border:1px solid rgba(255,255,255,.1);border-radius:18px;padding:14px;width:min(95vw,1400px);height:min(92vh,920px);display:flex;flex-direction:column;box-shadow:0 16px 56px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.08)}
+.pvhead{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.pvtitle{font-size:13.5px;color:#cfd3de;font-weight:600;letter-spacing:.2px}
+.pvseg{display:flex;align-items:center;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:9px;overflow:hidden}
+.pvseg .pvbtn{border:none;background:transparent;border-radius:0;padding:5px 11px;color:#d5d8e2}
+.pvseg .pvbtn:hover{background:rgba(255,255,255,.12);color:#fff}
+.pvz{font-size:12px;color:#cfd3de;min-width:48px;text-align:center;cursor:pointer;padding:5px 4px;user-select:none;font-variant-numeric:tabular-nums}
+.pvz:hover{background:rgba(255,255,255,.12);color:#fff}
+.pvbtn{padding:5px 12px;border:1px solid rgba(255,255,255,.22);border-radius:9px;background:rgba(255,255,255,.06);color:#d5d8e2;font-size:12.5px;cursor:pointer}
+.pvbtn:hover{border-color:rgba(255,255,255,.45);color:#fff;background:rgba(255,255,255,.1)}
+.pvclose{width:32px;height:28px;display:inline-flex;align-items:center;justify-content:center;padding:0}
+.pvstage{flex:1;position:relative;overflow:hidden;background:repeating-conic-gradient(#222228 0% 25%,#1a1a20 0% 50%) 0 0/28px 28px;border-radius:12px;border:1px solid rgba(255,255,255,.06)}
+.pvstage img{position:absolute;left:50%;top:50%;max-width:100%;max-height:100%;object-fit:contain;border-radius:3px;box-shadow:0 8px 32px rgba(0,0,0,.5);transform-origin:center;user-select:none;-webkit-user-drag:none}
+.pvhint{margin-top:10px;font-size:11.5px;color:#8a8f9e;text-align:center}
 "#;
 
 /// 完整样式表：浅色变量挂在 .app 基础规则；深色变量同时挂在

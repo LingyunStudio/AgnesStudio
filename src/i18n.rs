@@ -116,8 +116,12 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
         "hist.vid" => ("视频历史 {n}", "Video History {n}"),
 
         // ─ 图片预览 ──
-        "pv.title" => ("原图预览 {w}x{h} · {p}%", "Preview {w}x{h} · {p}%"),
-        "pv.hint" => ("滚轮缩放 · 放大后可拖动查看 · 按 ✕ 或点击空白处关闭", "Scroll to zoom · drag while zoomed in · close with ✕ or the backdrop"),
+        "pv.title" => ("原图预览 {w}×{h}", "Preview {w}×{h}"),
+        "pv.hint" => ("滚轮以中心缩放 · 放大后可拖动查看 · 双击图片或点击百分比复位 · 点击空白处关闭", "Scroll to zoom from center · drag to pan when zoomed · double-click to reset · click the backdrop to close"),
+        "pv.out" => ("缩小", "Zoom out"),
+        "pv.in" => ("放大", "Zoom in"),
+        "pv.fit" => ("复位到 100%", "Reset to 100%"),
+        "pv.close" => ("关闭", "Close"),
 
         // ─ 更新弹窗 ──
         "upd.title" => ("发现新版本", "New Version Available"),
