@@ -127,7 +127,10 @@ fn run_app() {
 
     let mut cfg = Config::new()
         .with_window(WindowBuilder::new().with_title("AgnesStudio"))
-        .with_data_directory(data_dir);
+        .with_data_directory(data_dir)
+        // 移除默认原生菜单栏（Window/Help）：它是 Win32 控件不吃 CSS 主题，
+        // 背景色与软件不一致；本应用无需菜单。
+        .with_menu(None);
 
     if let Some(icon) = build_window_icon() {
         cfg = cfg.with_icon(icon);
