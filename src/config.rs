@@ -27,7 +27,7 @@ pub struct Config {
     pub video_duration_preset: usize,
     #[serde(default)]
     pub video_mode: String, // "text" | "image" | "multi" | "keyframes"
-    // 图像 2.1 Flash 档位式尺寸：size 档位 + 宽高比
+    // 图像 Flash 系（2.1 / 2.5）档位式尺寸：size 档位 + 宽高比
     #[serde(default)]
     pub image_tier: String,  // "1K" | "2K" | "3K" | "4K"，空 = 未设置
     #[serde(default)]
@@ -62,7 +62,7 @@ impl Default for Config {
         Self {
             api_key: String::new(),
             save_dir,
-            model: "agnes-image-2.1-flash".to_string(),
+            model: "agnes-image-2.5-flash".to_string(),
             output_format: "url".to_string(),
             mode: "text".to_string(),
             last_prompt: String::new(),

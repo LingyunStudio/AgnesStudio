@@ -15,7 +15,8 @@ use crate::updater::{self, UpdateInfo};
 
 // (模型 ID, 双语名称)
 const MODELS: &[(&str, Bi)] = &[
-    ("agnes-image-2.1-flash", bi("Agnes Image 2.1 Flash（默认）", "Agnes Image 2.1 Flash (default)")),
+    ("agnes-image-2.5-flash", bi("Agnes Image 2.5 Flash（默认，当前免费）", "Agnes Image 2.5 Flash (default, free)")),
+    ("agnes-image-2.1-flash", bi("Agnes Image 2.1 Flash", "Agnes Image 2.1 Flash")),
     ("agnes-image-2.0-flash", bi("Agnes Image 2.0 Flash", "Agnes Image 2.0 Flash")),
 ];
 // (双语名称, 尺寸值)，最后一项为自定义
@@ -34,7 +35,7 @@ const SIZE_PRESETS: &[(Bi, &str)] = &[
     (bi("自定义", "Custom"), ""),
 ];
 
-// 2.1 Flash 档位式尺寸：size 档位 × ratio 宽高比（2.0 Flash 仍用精确尺寸）
+// Flash 系（2.1 / 2.5）档位式尺寸：size 档位 × ratio 宽高比（2.0 Flash 仍用精确尺寸）
 const IMG_TIERS: &[&str] = &["1K", "2K", "3K", "4K"];
 // (ratio, [1K, 2K, 3K, 4K 对应的精确像素)
 const IMG_TIER_SIZES: &[(&str, [&str; 4])] = &[
@@ -181,18 +182,18 @@ fn raw_to_data_uri(b:&[u8])->Result<String,String>{
     let b64=base64::engine::general_purpose::STANDARD.encode(out.into_inner());
     Ok(format!("data:image/png;base64,{b64}"))
 }
-/// 当前图片模型是否为 2.1 Flash（支持档位式 size + ratio）
-fn img_is_21(s:&AppState)->bool{MODELS[s.model_index].0=="agnes-image-2.1-flash"}
+/// 当前图片模型是否为 Flash 系（2.1 / 2.5 Flash，支持档位式 size + ratio）
+fn img_is_flash(s:&AppState)->bool{matches!(MODELS[s.model_index].0,"agnes-image-2.1-flash"|"agnes-image-2.5-flash")}
 fn resolved_size(s:&AppState)->String{
-    if img_is_21(s){
+    if img_is_flash(s){
         IMG_TIERS[s.tier_index.min(IMG_TIERS.len()-1)].to_string()
     }else if s.size_preset_index<SIZE_PRESETS.len()-1{SIZE_PRESETS[s.size_preset_index].1.to_string()}else{format!("{}x{}",s.custom_w,s.custom_h)}
 }
-/// 2.1 Flash 的 ratio 参数；2.0 Flash 不支持，返回 None
+/// Flash 系图片模型的 ratio 参数；2.0 Flash 不支持，返回 None
 fn resolved_ratio(s:&AppState)->Option<String>{
-    if img_is_21(s){Some(IMG_TIER_SIZES[s.ratio_index.min(IMG_TIER_SIZES.len()-1)].0.to_string())}else{None}
+    if img_is_flash(s){Some(IMG_TIER_SIZES[s.ratio_index.min(IMG_TIER_SIZES.len()-1)].0.to_string())}else{None}
 }
-/// 2.1 Flash 当前档位+比例对应的精确像素（仅展示用）
+/// Flash 系图片模型当前档位+比例对应的精确像素（仅展示用）
 fn tier_exact_size(s:&AppState)->&'static str{
     let r=IMG_TIER_SIZES[s.ratio_index.min(IMG_TIER_SIZES.len()-1)];
     r.1[s.tier_index.min(IMG_TIERS.len()-1)]
@@ -215,7 +216,7 @@ fn set_defaults(s:&mut AppState){
     s.out_fmt=if s.cfg.output_format=="b64_json"{OutFmt::B64}else{OutFmt::Url};
     s.model_index=MODELS.iter().position(|(id,_)|*id==s.cfg.model.as_str()).unwrap_or(0);
     s.theme=ThemeMode::from_cfg(&s.cfg.theme);s.lang=Lang::from_cfg(&s.cfg.lang);
-    if img_is_21(s){
+    if img_is_flash(s){
         // 优先用保存的档位/比例；没存过则尝试把旧精确尺寸映射到档位表
         let t=IMG_TIERS.iter().position(|t|*t==s.cfg.image_tier.as_str());
         let r=IMG_TIER_SIZES.iter().position(|(rt,_)|*rt==s.cfg.image_ratio.as_str());
@@ -745,7 +746,7 @@ fn SidePanel(st:Signal<AppState>)->Element{
     let midx=st.read().model_index;
     let loading=st.read().loading;
     let sidx=st.read().size_preset_index;
-    let is_21=img_is_21(&st.read());
+    let is_flash=img_is_flash(&st.read());
     let tidx=st.read().tier_index;
     let ridx=st.read().ratio_index;
     let reset=st.read().reset_token;
@@ -791,7 +792,7 @@ fn SidePanel(st:Signal<AppState>)->Element{
 
             if st.read().mode==Mode::Image{InputSection{st:st.clone()}}
 
-            if is_21{
+            if is_flash{
                 Card{title:i18n::t(L,"card.size").to_string(),
                     div{class:"subh",style:"margin-top:0;","{tier_lbl}"}
                     select{class:"sel",onchange:move|e|{if let Ok(i)=e.value().parse::<usize>(){st.write().tier_index=i;}},value:"{tidx}",{topts.into_iter()}}

@@ -30,9 +30,9 @@
 ## 功能特性
 
 ### 图像生成
-- 两个模型一键切换，默认使用 **Agnes Image 2.1 Flash**
+- 三个模型一键切换，默认使用 **Agnes Image 2.5 Flash**（最新一代，当前免费）
 - 工作模式：**文生图**（Text to Image）/ **图生图**（Image to Image）
-- 2.1 Flash：档位式尺寸（1K / 2K / 3K / 4K）× 8 种宽高比（1:1、3:4、4:3、16:9、9:16、2:3、3:2、21:9）
+- 2.1 / 2.5 Flash：档位式尺寸（1K / 2K / 3K / 4K）× 8 种宽高比（1:1、3:4、4:3、16:9、9:16、2:3、3:2、21:9）
 - 2.0 Flash：尺寸预设 1024×1024、1280×720、2K、4K 等，并支持自定义
 - 输出格式：URL / Base64
 - 生成结果可直接在软件内预览、放大查看、一键保存到指定目录
@@ -55,7 +55,7 @@
 
 ## 截图
 
-![image-20260626235929952](https://cdn.jsdelivr.net/gh/LingyunStudio/LingyunImg@master/2026/06/upgit_20260626_1782489574.png)
+![image-20260903193128187](https://cdn.jsdelivr.net/gh/LingyunStudio/LingyunImg@master/2026/09/upgit_20260903_1788435090.png)
 
 ---
 
@@ -207,11 +207,12 @@ AgnesStudio/
 
 ## 相关文档
 
-- [Agnes Image 2.0 Flash 文档](agnes-image-2.0-flash文档.md)
-- [Agnes Image 2.1 Flash 文档](agnes-image-2.1-flash文档.md)
-- [Agnes Video 2.5 Flash 文档](agnes-video-2.5-flash文档.md)
-- [Agnes Video 2.5 文档](agnes-video-2.5文档.md)
-- [Agnes Video V2.0 文档](agnes-video-v2.0文档.md)
+- [Agnes Image 2.5 Flash 文档](docs/Agnes%20AI/agnes-image-2.5-flash.md)
+- [Agnes Image 2.1 Flash 文档](docs/Agnes%20AI/agnes-image-2.1-flash.md)
+- [Agnes Image 2.0 Flash 文档](docs/Agnes%20AI/agnes-image-2.0-flash.md)
+- [Agnes Video 2.5 Flash 文档](docs/Agnes%20AI/agnes-video-2.5-flash.md)
+- [Agnes Video 2.5 文档](docs/Agnes%20AI/agnes-video-2.5.md)
+- [Agnes Video V2.0 文档](docs/Agnes%20AI/agnes-video-v2.0.md)
 
 ---
 
