@@ -9,13 +9,13 @@
 </p>
 <b><span style="color:#e74c3c">AgnesStudio</span></b> 是一款大小仅有不到 6MB，基于 Rust + <a href="https://dioxuslabs.com/">Dioxus</a> 构建的桌面客户端，为 <a href="https://agnes-ai.com/">Agnes AI</a> 的图像与视频生成模型提供精美的图形化操作界面。
 
-- 🖼 **图像生成**：支持 Agnes Image 2.1 Flash / 2.0 Flash，文生图与图生图
+- 🖼 **图像生成**：支持 Agnes Image 2.5 / 2.1 / 2.0 Flash，文生图与图生图
 - 🎬 **视频生成**：支持 Agnes Video 2.5 Flash / 2.5（文生视频、首尾帧、图片/音频/视频参考）与 V2.0（文生、图生、多图、关键帧动画）
 - 🧊 **液态玻璃 UI**：苹果式磨砂玻璃质感，中性配色；生成按钮常驻侧栏底部，永远一眼可见
 - 🌗 **主题切换**：浅色 / 深色 / 跟随系统，顶栏一键切换
 - 🌐 **中英双语**：界面语言一键切换（中文 / English）
 - 💾 **本地配置**：API Key、保存目录等配置保存在本机，重启不丢失
-- 📐 **丰富尺寸**：2.1 Flash 档位式尺寸（1K–4K × 8 种宽高比），2.0 Flash 精确尺寸预设与自定义
+- 📐 **丰富尺寸**：2.1 / 2.5 Flash 档位式尺寸（1K–4K × 8 种宽高比），2.0 Flash 精确尺寸预设与自定义
 - 🖥 **跨平台内核**：基于 Dioxus desktop，目前主要面向 Windows
 
 ---
@@ -55,7 +55,15 @@
 
 ## 截图
 
+图片生成：
+
 ![image-20260903193128187](https://cdn.jsdelivr.net/gh/LingyunStudio/LingyunImg@master/2026/09/upgit_20260903_1788435090.png)
+
+
+
+视频生成：
+
+![image-20260903220811464](https://cdn.jsdelivr.net/gh/LingyunStudio/LingyunImg@master/2026/09/upgit_20260903_1788444491.png)
 
 ---
 
@@ -184,7 +192,7 @@ cargo build --release
 ```
 AgnesStudio/
 ├── src/
-│   ├── main.rs        # 入口：窗口标题、窗口图标
+│   ├── main.rs        # 入口：窗口配置、图标、WebView2 检测
 │   ├── app.rs         # 全部 UI 与交互逻辑（图片/视频/预览/历史/自动更新）
 │   ├── api.rs         # Agnes 图像/视频 API 请求封装
 │   ├── config.rs      # 本地配置读写
@@ -197,6 +205,9 @@ AgnesStudio/
 │   └── icon.rc        # Windows 资源声明
 ├── examples/
 │   └── make_ico.rs    # 由 icon.png 生成 icon.ico 的工具
+├── docs/
+│   ├── Agnes AI/      # 各模型官方文档（Markdown）
+│   └── 模型文档说明.md  # 模型清单与集成状态索引
 ├── build.rs           # 编译期把图标资源嵌入 exe
 ├── setup.iss          # Inno Setup 安装脚本
 ├── build.ps1          # 一键打包 PowerShell 脚本
