@@ -57,13 +57,13 @@
 
 图片生成：
 
-![image-20260903193128187](https://cdn.jsdelivr.net/gh/LingyunStudio/LingyunImg@master/2026/09/upgit_20260903_1788435090.png)
+![image-20260903221918804](https://cdn.jsdelivr.net/gh/LingyunStudio/LingyunImg@master/2026/09/upgit_20260903_1788445159.png)
 
 
 
 视频生成：
 
-![image-20260903220811464](https://cdn.jsdelivr.net/gh/LingyunStudio/LingyunImg@master/2026/09/upgit_20260903_1788444491.png)
+![image-20260903222132623](https://cdn.jsdelivr.net/gh/LingyunStudio/LingyunImg@master/2026/09/upgit_20260903_1788445292.png)
 
 ---
 
