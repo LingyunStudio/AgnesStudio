@@ -1099,9 +1099,9 @@ fn ImageViewer(st:Signal<AppState>,entry:CachedImage)->Element{
     let d_uri=entry.data_uri.clone();
 
     let sz_str=format!("· {} · {}x{}",entry.size,dims[0],dims[1]);
-    let reg_txt=format!("🔄 {}",i18n::t(L,"act.reg"));
-    let open_txt=format!("🌐 {}",i18n::t(L,"act.openimg"));
-    let save_txt=format!("💾 {}",i18n::t(L,"act.save"));
+    let reg_txt=i18n::t(L,"act.reg").to_string();
+    let open_txt=i18n::t(L,"act.openimg").to_string();
+    let save_txt=i18n::t(L,"act.save").to_string();
     let pline=format!("{}  {}",i18n::t(L,"viewer.prompt"),entry.prompt);
 
     let mut ar:Vec<Element>=vec![];
@@ -1121,7 +1121,7 @@ fn ImageViewer(st:Signal<AppState>,entry:CachedImage)->Element{
         div{class:"main",
             div{class:"stage",
                 div{class:"imgwrap",
-                    img{src:"{d_uri}",style:"max-width:70vw;max-height:calc(100vh - 300px);object-fit:contain;border-radius:8px;display:block;",
+                    img{src:"{d_uri}",style:"max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;display:block;",
                         onclick:move|_|{let mut s=st.write();s.show_popup=true;s.popup_uri=d_uri.clone();s.popup_dims=dims;s.popup_zoom=1.0;s.popup_pan=[0.0,0.0];}
                     }
                 }
@@ -1771,9 +1771,9 @@ fn VideoViewer(st:Signal<AppState>,entry:CachedVideo,index:usize)->Element{
     let url_act=entry.video_url.clone();
     let info=i18n::tf(L,"vid.info",&[("size",&entry.size),("model",&entry.model),("sec",&entry.seconds)]);
 
-    let reg_txt=format!("🔄 {}",i18n::t(L,"act.reg"));
-    let open_txt=format!("🌐 {}",i18n::t(L,"act.openvid"));
-    let save_txt=format!("💾 {}",i18n::t(L,"act.save"));
+    let reg_txt=i18n::t(L,"act.reg").to_string();
+    let open_txt=i18n::t(L,"act.openvid").to_string();
+    let save_txt=i18n::t(L,"act.save").to_string();
     let pline=format!("{}  {}",i18n::t(L,"viewer.prompt"),entry.prompt);
 
     let mut ar:Vec<Element>=vec![];
@@ -1797,7 +1797,7 @@ fn VideoViewer(st:Signal<AppState>,entry:CachedVideo,index:usize)->Element{
         div{class:"main",
             div{class:"stage",
                 div{class:"vidwrap",
-                    video{id:"{vid_id}",src:"{src}",controls:true,preload:"auto",style:"max-width:70vw;max-height:calc(100vh - 300px);border-radius:8px;display:block;background:#000;"}
+                    video{id:"{vid_id}",src:"{src}",controls:true,preload:"auto",style:"max-width:100%;max-height:100%;border-radius:8px;display:block;background:#000;"}
                 }
             }
             div{class:"meta",
