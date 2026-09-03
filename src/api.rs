@@ -498,6 +498,12 @@ fn build_video25_body(p: &VideoParams) -> Video25Request {
     } else {
         MODEL_VIDEO_V25
     };
+    // 模式规则（官方文档）：text 不允许任何媒体字段；keyframe 仅 first/last_frame；
+    // reference 仅 images/audios/videos。切换生成模式后另一模式的媒体若仍残留在
+    // 状态里，会同时出现在请求体中，服务端返回 400
+    // "keyframe media and reference media cannot be combined"，因此这里按模式过滤。
+    let kf_media = matches!(mode, V25Mode::Keyframe);
+    let ref_media = matches!(mode, V25Mode::Reference);
     Video25Request {
         model: model.to_string(),
         prompt: p.prompt.clone(),
@@ -511,29 +517,44 @@ fn build_video25_body(p: &VideoParams) -> Video25Request {
         size: "720P".to_string(),
         aspect_ratio,
         seed,
-        // text 模式禁止携带媒体字段；skip_serializing_if 已保证空值不序列化
-        first_frame: first_frame.filter(|s| !s.trim().is_empty()),
-        last_frame: last_frame.filter(|s| !s.trim().is_empty()),
-        images: images
-            .iter()
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect(),
-        audios: audios
-            .iter()
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect(),
-        // Flash 不支持视频参考（传入有效内容返回 400），直接不序列化
-        videos: if flash {
-            vec![]
+        first_frame: if kf_media {
+            first_frame.filter(|s| !s.trim().is_empty())
         } else {
+            None
+        },
+        last_frame: if kf_media {
+            last_frame.filter(|s| !s.trim().is_empty())
+        } else {
+            None
+        },
+        images: if ref_media {
+            images
+                .iter()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        } else {
+            vec![]
+        },
+        audios: if ref_media {
+            audios
+                .iter()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        } else {
+            vec![]
+        },
+        // Flash 不支持视频参考（传入有效内容返回 400），直接不序列化
+        videos: if ref_media && !flash {
             videos
                 .iter()
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .map(|url| Video25RefVideo { url })
                 .collect()
+        } else {
+            vec![]
         },
     }
 }
