@@ -52,6 +52,8 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
         "link.web" => ("Agnes 官网", "Agnes Website"),
         "key.ok" => ("API Key 已就绪", "API Key ready"),
         "key.missing" => ("未设置 API Key", "API Key not set"),
+        "key.com" => ("国际站", "International"),
+        "key.cn" => ("国内站", "China"),
         "top.gen" => ("生成中", "Generating"),
         "upd.chip" => ("有新版本 v{v}", "New version v{v}"),
 
@@ -83,6 +85,11 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
         // ─ 设置 ──
         "set.show" => ("👁 显示", "👁 Show"),
         "set.hide" => ("🙈 隐藏", "🙈 Hide"),
+        "set.key.com" => ("国际站（.com · 美元计费）", "International (.com · USD)"),
+        "set.key.cn" => ("国内站（.cn · 人民币计费）", "China (.cn · CNY)"),
+        "set.key.apply" => ("官网申请 ↗", "Get a Key ↗"),
+        "set.key.note" => ("两站模型能力一致，仅 API 接口地址不同，账户与余额互不互通。只填写一站的 Key 时将自动使用该站。", "Both sites offer the same models and differ only in API endpoint; accounts and balances are separate. With only one key filled, that site is used automatically."),
+        "set.site" => ("当前使用站点", "Active Site"),
         "set.dir" => ("保存目录", "Save Directory"),
         "set.browse" => ("浏览", "Browse"),
         "set.save" => ("保存设置", "Save Settings"),

@@ -4,7 +4,18 @@ use std::path::PathBuf;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Config {
+    /// 旧版单 Key 字段（0.9.0 及以前固定使用国际站），仅作迁移来源，不再使用
     pub api_key: String,
+    /// 国际站（apihub.agnes-ai.com）API Key
+    #[serde(default)]
+    pub api_key_com: String,
+    /// 国内站（api.agnes-ai.cn）API Key
+    #[serde(default)]
+    pub api_key_cn: String,
+    /// 当前使用站点："com" | "cn"。仅当两站 Key 都已填写时生效，
+    /// 只填一站则自动使用该站
+    #[serde(default)]
+    pub site: String,
     pub save_dir: String,
     pub model: String,
     pub output_format: String,
@@ -61,6 +72,9 @@ impl Default for Config {
             .to_string();
         Self {
             api_key: String::new(),
+            api_key_com: String::new(),
+            api_key_cn: String::new(),
+            site: "com".to_string(),
             save_dir,
             model: "agnes-image-2.5-flash".to_string(),
             output_format: "url".to_string(),
@@ -101,10 +115,19 @@ fn config_path() -> PathBuf {
 
 pub fn load() -> Config {
     let path = config_path();
-    match fs::read_to_string(&path) {
+    let mut cfg = match fs::read_to_string(&path) {
         Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
         Err(_) => Config::default(),
+    };
+    // 旧版单 Key 迁移：0.9.0 及以前固定走国际站，老用户的 Key 归入国际站
+    if cfg.api_key_com.trim().is_empty() && !cfg.api_key.trim().is_empty() {
+        cfg.api_key_com = cfg.api_key.clone();
     }
+    // 站点字段归一化：非 "cn" 一律按 "com" 处理
+    if !cfg.site.eq_ignore_ascii_case("cn") {
+        cfg.site = "com".to_string();
+    }
+    cfg
 }
 
 pub fn save(cfg: &Config) {

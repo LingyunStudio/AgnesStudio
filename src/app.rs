@@ -108,7 +108,7 @@ struct Notice{kind:NoticeKind,text:String}
 enum BgEvent{
     ImageDone{bytes:Vec<u8>,url:Option<String>,prompt:String,model:String,size:String},
     Error(String),FilePicked(Option<(String,String)>),DirPicked(Option<String>),
-    VideoCreated{video_id:String,task_id:String,seconds:String,size:String,model:String},
+    VideoCreated{video_id:String,task_id:String,seconds:String,size:String,model:String,site:api::Site},
     VideoStatus{done:bool,failed:bool,progress:f32,message:String,seconds:String,size:String,transient:bool},
     VideoReady{bytes:Vec<u8>,video_url:String,prompt:String,model:String,seconds:String,size:String},
     VideoSaved{index:usize,path:String},
@@ -132,7 +132,7 @@ struct CachedVideo{
     video_url:String,bytes:Vec<u8>,data_uri:String,prompt:String,model:String,size:String,seconds:String,
 }
 #[derive(Clone,PartialEq)]
-struct VideoJob{video_id:String,task_id:String,prompt:String,model:String}
+struct VideoJob{video_id:String,task_id:String,prompt:String,model:String,site:api::Site}
 
 struct AppState{
     cfg:config::Config,images:Vec<CachedImage>,selected:usize,loading:bool,
@@ -335,6 +335,21 @@ fn serve_icon_asset(
     responder.respond(r);
 }
 
+/// 当前使用站点：两站 Key 都已填写时用用户选择的，只填一站自动用该站
+fn cur_site(s:&AppState)->api::Site{
+    let com=!s.cfg.api_key_com.trim().is_empty();
+    let cn=!s.cfg.api_key_cn.trim().is_empty();
+    match(com,cn){
+        (true,false)=>api::Site::Com,
+        (false,true)=>api::Site::Cn,
+        _=>api::Site::from_cfg(&s.cfg.site),
+    }
+}
+/// 当前站点的 API Key
+fn cur_key(s:&AppState)->String{
+    match cur_site(s){api::Site::Com=>s.cfg.api_key_com.clone(),api::Site::Cn=>s.cfg.api_key_cn.clone()}
+}
+
 // ── 视频辅助 ──────────────────────────────────────────────────────────────────
 fn video_dims(s:&AppState)->(i32,i32){
     if s.vsize_index<VIDEO_SIZE_PRESETS.len()-1{
@@ -374,7 +389,7 @@ fn do_save_video(s:&mut AppState){
     // 缓存字节无效（可能下载时被 CDN 返回错误页）：用远程 URL 重新下载
     if entry.video_url.is_empty(){s.notice(NoticeKind::Err,i18n::t(s.lang,"nt.novurl").to_string());return;}
     s.notice(NoticeKind::Info,i18n::t(s.lang,"nt.redl").to_string());
-    let url=entry.video_url.clone();let key=s.cfg.api_key.clone();let dir2=dir.clone();let idx=sel;
+    let url=entry.video_url.clone();let key=cur_key(&s);let dir2=dir.clone();let idx=sel;
     let tx=s.bg_tx.0.clone();
     std::thread::spawn(move||{
         let rt=tokio::runtime::Runtime::new().expect("rt");
@@ -476,8 +491,8 @@ pub fn App()->Element{
         BgEvent::Error(e)=>{s.loading=false;s.error=e}
         BgEvent::FilePicked(f)=>{s.input_file=f}
         BgEvent::DirPicked(d)=>{if let Some(d)=d{s.cfg.save_dir=d}}
-        BgEvent::VideoCreated{video_id,task_id,seconds,size,model}=>{
-            s.video_job=Some(VideoJob{video_id,task_id,prompt:s.video_prompt.clone(),model});
+        BgEvent::VideoCreated{video_id,task_id,seconds,size,model,site}=>{
+            s.video_job=Some(VideoJob{video_id,task_id,prompt:s.video_prompt.clone(),model,site});
             s.video_progress=1.0;s.video_msg=i18n::t(s.lang,"vs.created").to_string();
             s.video_error.clear();
             let _=(seconds,size);
@@ -557,10 +572,10 @@ pub fn App()->Element{
         let mut fails=0u32;
         loop{
             tokio::time::sleep(std::time::Duration::from_secs(interval)).await;
-            let(job,key,loading,prompt)={let s=s2.read();(s.video_job.clone(),s.cfg.api_key.clone(),s.video_loading,s.video_prompt.clone())};
+            let(job,key,loading,prompt)={let s=s2.read();(s.video_job.clone(),cur_key(&s),s.video_loading,s.video_prompt.clone())};
             if loading&&job.is_some(){
                 let j=job.unwrap();
-                match api::fetch_video_status(&key,&j.video_id,&j.task_id,&j.model).await{
+                match api::fetch_video_status(j.site,&key,&j.video_id,&j.task_id,&j.model).await{
                     Ok(st_)=>{
                         // 成功拿到状态：重置退避
                         interval=5;fails=0;
@@ -667,7 +682,8 @@ pub fn App()->Element{
 #[component]
 fn TopBar(st:Signal<AppState>)->Element{
     let L=st.read().lang;
-    let key_ok=!st.read().cfg.api_key.trim().is_empty();
+    let key_ok=!cur_key(&st.read()).trim().is_empty();
+    let site=cur_site(&st.read());
     let ws=st.read().workspace;
     let mdl=if ws==Workspace::Video{
         VIDEO_MODELS.get(st.read().vmodel_index).map(|m|m.0).unwrap_or("").to_string()
@@ -676,7 +692,9 @@ fn TopBar(st:Signal<AppState>)->Element{
     };
     let loading=match ws{Workspace::Image=>st.read().loading,Workspace::Video=>st.read().video_loading};
     let dot_c=if key_ok{"var(--ok)"}else{"var(--err)"};
-    let key_txt=if key_ok{i18n::t(L,"key.ok")}else{i18n::t(L,"key.missing")};
+    let key_txt=if key_ok{
+        format!("{} · {}",i18n::t(L,"key.ok"),i18n::t(L,if site==api::Site::Cn{"key.cn"}else{"key.com"}))
+    }else{i18n::t(L,"key.missing").to_string()};
     let gen_txt=format!("● {}",i18n::t(L,"top.gen"));
     let upd_el=st.read().update_info.as_ref().map(|i|{
         let txt=format!("● {}",i18n::tf(L,"upd.chip",&[("v",&i.version)]));
@@ -685,6 +703,7 @@ fn TopBar(st:Signal<AppState>)->Element{
         }
     });
     let web_lnk=i18n::t(L,"link.web").to_string();
+    let web_url=site.web_url().to_string();
     let is_img=ws==Workspace::Image;
     let img_cls=if is_img{"tab on"}else{"tab"};
     let vid_cls=if is_img{"tab"}else{"tab on"};
@@ -725,7 +744,7 @@ fn TopBar(st:Signal<AppState>)->Element{
             if loading{
                 span{class:"chip pulse","{gen_txt}"}
             }
-            span{class:"link",onclick:move|_|open_url("https://agnes-ai.com/"),"{web_lnk}"}
+            span{class:"link",onclick:move|_|open_url(&web_url),"{web_lnk}"}
             span{class:"link",onclick:move|_|open_url("https://github.com/LingyunStudio/AgnesStudio"),"GitHub"}
             button{class:"iconbtn",title:"{theme_tip}",onclick:cycle_theme,"{theme_icon}"}
             button{class:"iconbtn",style:"font-weight:800;font-size:12px;",title:"Language",onclick:toggle_lang,"{lang_lbl}"}
@@ -885,7 +904,11 @@ fn SettingsBody(st:Signal<AppState>)->Element{
     let eye=if st.read().api_key_visible{i18n::t(L,"set.hide")}else{i18n::t(L,"set.show")};
     let eye_txt=eye.to_string();
     let tx=st.read().bg_tx.clone();
-    let api_key=st.read().cfg.api_key.clone();
+    let com_key=st.read().cfg.api_key_com.clone();
+    let cn_key=st.read().cfg.api_key_cn.clone();
+    // 两站 Key 都已填写时，出现手动切换当前站点的控件
+    let both=!com_key.trim().is_empty()&&!cn_key.trim().is_empty();
+    let site_sel=if cur_site(&st.read())==api::Site::Cn{1}else{0};
     let save_dir=st.read().cfg.save_dir.clone();
     let theme_sel=match st.read().theme{ThemeMode::Light=>0,ThemeMode::Dark=>1,ThemeMode::System=>2};
     let lang_sel=if L==Lang::Zh{0}else{1};
@@ -903,6 +926,15 @@ fn SettingsBody(st:Signal<AppState>)->Element{
     let dir_lbl=i18n::t(L,"set.dir").to_string();
     let theme_lbl=i18n::t(L,"set.theme").to_string();
     let lang_lbl=i18n::t(L,"set.lang").to_string();
+    let keycom_lbl=i18n::t(L,"set.key.com").to_string();
+    let keycn_lbl=i18n::t(L,"set.key.cn").to_string();
+    let apply_txt=i18n::t(L,"set.key.apply").to_string();
+    let keynote_txt=i18n::t(L,"set.key.note").to_string();
+    let site_lbl=i18n::t(L,"set.site").to_string();
+    let site_opts=vec![
+        format!("{} · .com",i18n::t(L,"key.com")),
+        format!("{} · .cn",i18n::t(L,"key.cn")),
+    ];
     let checkLbl=i18n::t(L,"set.checking").to_string();
     let ok_txt=i18n::t(L,"set.uptodate").to_string();
     let notice_el=notice.map(|n|{
@@ -928,7 +960,24 @@ fn SettingsBody(st:Signal<AppState>)->Element{
             span{class:"lbl","API Key"}
             button{class:"g",onclick:move|_|{let vis=st.read().api_key_visible;st.write().api_key_visible=!vis;},"{eye_txt}"}
         }
-        input{class:"ix",r#type:"{pwd}",placeholder:"Bearer token",value:"{api_key}",oninput:move|e|st.write().cfg.api_key=e.value()}
+        div{class:"row between",style:"margin-top:6px;",
+            div{class:"subh",style:"margin:0;","{keycom_lbl}"}
+            span{class:"link",onclick:move|_|open_url("https://agnes-ai.com/"),"{apply_txt}"}
+        }
+        input{class:"ix",r#type:"{pwd}",placeholder:"Bearer token · apihub.agnes-ai.com",value:"{com_key}",oninput:move|e|st.write().cfg.api_key_com=e.value()}
+        div{class:"row between",style:"margin-top:8px;",
+            div{class:"subh",style:"margin:0;","{keycn_lbl}"}
+            span{class:"link",onclick:move|_|open_url("https://agnes-ai.cn/"),"{apply_txt}"}
+        }
+        input{class:"ix",r#type:"{pwd}",placeholder:"Bearer token · api.agnes-ai.cn",value:"{cn_key}",oninput:move|e|st.write().cfg.api_key_cn=e.value()}
+        div{class:"hint",style:"margin-top:7px;","{keynote_txt}"}
+        if both{
+            div{class:"subh","{site_lbl}"}
+            SegBtns{sel:site_sel,opts:site_opts,on_set:move|i|{
+                let site=if i==1{api::Site::Cn}else{api::Site::Com};
+                st.write().cfg.site=site.to_cfg().to_string();
+            }}
+        }
         div{class:"subh","{dir_lbl}"}
         div{class:"row",
             input{class:"ix",style:"flex:1;",value:"{save_dir}",oninput:move|e|st.write().cfg.save_dir=e.value()}
@@ -942,11 +991,15 @@ fn SettingsBody(st:Signal<AppState>)->Element{
         div{class:"row",
             button{class:"g",onclick:move|_|{config::save(&st.read().cfg);let msg=i18n::t(L,"set.saved").to_string();st.write().notice(NoticeKind::Ok,msg);},"{save_txt}"}
             button{class:"g",onclick:move|_|{
-                // 恢复默认：保留 API Key 与界面偏好（主题/语言）
-                let k=st.read().cfg.api_key.clone();
+                // 恢复默认：保留两站 API Key、站点选择与界面偏好（主题/语言）
+                let kc=st.read().cfg.api_key_com.clone();
+                let kn=st.read().cfg.api_key_cn.clone();
+                let site=st.read().cfg.site.clone();
                 let theme=st.read().theme;let lang=st.read().lang;
                 st.write().cfg=config::Config::default();
-                st.write().cfg.api_key=k;
+                st.write().cfg.api_key_com=kc;
+                st.write().cfg.api_key_cn=kn;
+                st.write().cfg.site=site;
                 st.write().cfg.theme=theme.to_cfg().to_string();
                 st.write().cfg.lang=lang.to_cfg().to_string();
                 set_defaults(&mut st.write());
@@ -1365,22 +1418,23 @@ fn on_gen(mut st:Signal<AppState>){
     let L=st.read().lang;
     let mut s=st.write();
     if s.loading{return}
-    if s.cfg.api_key.trim().is_empty(){s.error=i18n::t(L,"err.nokey").to_string();return}
+    if cur_key(&s).trim().is_empty(){s.error=i18n::t(L,"err.nokey").to_string();return}
     if s.prompt.trim().is_empty(){s.error=i18n::t(L,"err.noprompt").to_string();return}
     if s.mode==Mode::Image&&cur_input(&s).is_none(){s.error=i18n::t(L,"err.noinput").to_string();return}
     let size=resolved_size(&s);let ratio=resolved_ratio(&s);let input=cur_input(&s);let prompt=s.prompt.clone();
     let model=MODELS[s.model_index].0.to_string();let fmt=if s.out_fmt==OutFmt::Url{"url"}else{"b64_json"};
+    let site=cur_site(&s);let api_key=cur_key(&s);
     s.loading=true;s.error.clear();s.notice=None;s.gen_elapsed=0.0;
     s.cfg.last_prompt=s.prompt.clone();s.cfg.model=model.clone();
     s.cfg.output_format=fmt.to_string();s.cfg.mode=if s.mode==Mode::Text{"text".to_string()}else{"image".to_string()};
     // 2.1 档位尺寸存档位/比例（last_size 存精确像素便于展示与旧版回退）
     if let Some(r)=ratio.as_ref(){s.cfg.image_tier=size.clone();s.cfg.image_ratio=r.clone();s.cfg.last_size=tier_exact_size(&s).to_string();}
     else{s.cfg.last_size=size.clone();}
-    config::save(&s.cfg);let api_key=s.cfg.api_key.clone();drop(s);
+    config::save(&s.cfg);drop(s);
     let tx=st.read().bg_tx.0.clone();
     std::thread::spawn(move||{
         let rt=tokio::runtime::Runtime::new().expect("rt");
-        let p=api::GenParams{api_key:api_key.clone(),model:model.clone(),prompt:prompt.clone(),size:size.clone(),ratio:ratio.clone(),input_image:input.clone(),output_format:fmt.to_string()};
+        let p=api::GenParams{site,api_key:api_key.clone(),model:model.clone(),prompt:prompt.clone(),size:size.clone(),ratio:ratio.clone(),input_image:input.clone(),output_format:fmt.to_string()};
         match rt.block_on(api::generate(p)){Ok(r)=>{let _=tx.send(BgEvent::ImageDone{bytes:r.bytes,url:r.url,prompt:prompt.clone(),model:model.clone(),size:size.clone()});}Err(e)=>{let _=tx.send(BgEvent::Error(e));}}
     });
 }
@@ -1388,7 +1442,7 @@ fn on_gen_video(mut st:Signal<AppState>){
     let L=st.read().lang;
     let mut s=st.write();
     if s.video_loading{return}
-    if s.cfg.api_key.trim().is_empty(){s.video_error=i18n::t(L,"err.nokey").to_string();return}
+    if cur_key(&s).trim().is_empty(){s.video_error=i18n::t(L,"err.nokey").to_string();return}
     if s.video_prompt.trim().is_empty(){s.video_error=i18n::t(L,"err.noprompt").to_string();return}
     let model=cur_video_model(&s).to_string();
     let v25=model!=api::MODEL_VIDEO_V20;
@@ -1461,13 +1515,13 @@ fn on_gen_video(mut st:Signal<AppState>){
         s.cfg.video_mode=match s.vmode{VMode::Text=>"text".to_string(),VMode::Image=>"image".to_string(),VMode::Multi=>"multi".to_string(),VMode::Keyframes=>"keyframes".to_string()};
     }
     config::save(&s.cfg);
-    let api_key=s.cfg.api_key.clone();drop(s);
+    let site=cur_site(&s);let api_key=cur_key(&s);drop(s);
     let tx=st.read().bg_tx.0.clone();
     std::thread::spawn(move||{
         let rt=tokio::runtime::Runtime::new().expect("rt");
-        let p=api::VideoParams{api_key,prompt,kind};
+        let p=api::VideoParams{site,api_key,prompt,kind};
         match rt.block_on(api::create_video_task(&p)){
-            Ok(t)=>{let _=tx.send(BgEvent::VideoCreated{video_id:t.video_id,task_id:t.task_id,seconds:t.seconds,size:t.size,model});}
+            Ok(t)=>{let _=tx.send(BgEvent::VideoCreated{video_id:t.video_id,task_id:t.task_id,seconds:t.seconds,size:t.size,model,site});}
             Err(e)=>{let _=tx.send(BgEvent::VideoStatus{done:false,failed:true,progress:0.0,message:e,seconds:String::new(),size:String::new(),transient:false});}
         }
     });

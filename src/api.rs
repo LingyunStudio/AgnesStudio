@@ -2,11 +2,56 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-const ENDPOINT: &str = "https://apihub.agnes-ai.com/v1/images/generations";
-const VIDEO_CREATE: &str = "https://apihub.agnes-ai.com/v1/videos";
-const VIDEO_RESULT: &str = "https://apihub.agnes-ai.com/agnesapi";
+/// Agnes 站点：国内站（.cn）与国际站（.com）模型能力一致，仅 API 地址与计费货币不同
+/// （国际站美元、国内站人民币），账户与余额互不互通。
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Site {
+    Com,
+    Cn,
+}
+
+impl Site {
+    /// 配置文件取值："com" | "cn"（其余按国际站处理）
+    pub fn from_cfg(s: &str) -> Self {
+        if s.eq_ignore_ascii_case("cn") {
+            Site::Cn
+        } else {
+            Site::Com
+        }
+    }
+    pub fn to_cfg(self) -> &'static str {
+        match self {
+            Site::Com => "com",
+            Site::Cn => "cn",
+        }
+    }
+    /// API 根地址（不含路径；图片/视频接口在 /v1 下，任务查询在 /agnesapi）
+    pub fn api_base(self) -> &'static str {
+        match self {
+            Site::Com => "https://apihub.agnes-ai.com",
+            Site::Cn => "https://api.agnes-ai.cn",
+        }
+    }
+    /// 官网地址（申请 Key / 文档）
+    pub fn web_url(self) -> &'static str {
+        match self {
+            Site::Com => "https://agnes-ai.com/",
+            Site::Cn => "https://agnes-ai.cn/",
+        }
+    }
+    pub fn images_endpoint(self) -> String {
+        format!("{}/v1/images/generations", self.api_base())
+    }
+    pub fn video_create_url(self) -> String {
+        format!("{}/v1/videos", self.api_base())
+    }
+    pub fn video_result_url(self) -> String {
+        format!("{}/agnesapi", self.api_base())
+    }
+}
 
 pub struct GenParams {
+    pub site: Site,
     pub api_key: String,
     pub model: String,
     pub prompt: String,
@@ -101,7 +146,7 @@ pub async fn generate(p: GenParams) -> Result<GenResult, String> {
     let body = serde_json::to_string(&build_body(&p))
         .map_err(|e| format!("Failed to serialize request: {e}"))?;
     let resp = send_retry(
-        ENDPOINT,
+        &p.site.images_endpoint(),
         reqwest::Method::POST,
         &p.api_key,
         Some(&body),
@@ -274,6 +319,7 @@ pub enum VideoKind {
 }
 
 pub struct VideoParams {
+    pub site: Site,
     pub api_key: String,
     pub prompt: String,
     pub kind: VideoKind,
@@ -572,7 +618,7 @@ pub async fn create_video_task(p: &VideoParams) -> Result<VideoTask, String> {
     }
     .map_err(|e| format!("Failed to serialize request: {e}"))?;
     let resp = send_retry(
-        VIDEO_CREATE,
+        &p.site.video_create_url(),
         reqwest::Method::POST,
         &p.api_key,
         Some(&body),
@@ -627,6 +673,7 @@ pub struct VideoStatus {
 }
 
 pub async fn fetch_video_status(
+    site: Site,
     api_key: &str,
     video_id: &str,
     task_id: &str,
@@ -634,9 +681,12 @@ pub async fn fetch_video_status(
 ) -> Result<VideoStatus, String> {
     // 优先用 video_id 查询（model_name 显式指定模型）；video_id 失败回退 task_id
     let url = if !video_id.is_empty() {
-        format!("{VIDEO_RESULT}?video_id={video_id}&model_name={model}")
+        format!(
+            "{}?video_id={video_id}&model_name={model}",
+            site.video_result_url()
+        )
     } else {
-        format!("{VIDEO_CREATE}/{task_id}")
+        format!("{}/{task_id}", site.video_create_url())
     };
 
     let resp = send_retry(&url, reqwest::Method::GET, api_key, None, 3, Duration::from_secs(60))
