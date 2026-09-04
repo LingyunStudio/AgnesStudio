@@ -217,11 +217,17 @@ button{font-family:inherit}
 .urlitem .ulbl{font-size:12px;color:var(--text2);flex-shrink:0;width:42px}
 .urlitem .utxt{font-size:12px;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
+/* API Key 槽位（站点 × 密钥类型，右侧「启用/使用中」） */
+.keyslot{display:flex;align-items:center;gap:6px;margin-top:6px}
+.keyslot .kslabel{font-size:12px;color:var(--text2);width:110px;flex-shrink:0}
+.keyslot .ix{flex:1;min-width:0}
+.ksactive{font-size:12px;font-weight:700;color:var(--ok);white-space:nowrap;flex-shrink:0}
+
 /* 主区：图片面板 / 信息面板 / 历史栏三块同宽（均为 main 内容列宽度），
    统一 14px 圆角 + 玻璃边框 */
 .main{flex:1;display:flex;flex-direction:column;padding:18px 18px 14px;overflow:hidden;min-height:0}
 .stage{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;min-height:0}
-.imgwrap{background:var(--glass-strong);backdrop-filter:blur(22px) saturate(160%);-webkit-backdrop-filter:blur(22px) saturate(160%);border:1px solid var(--glass-border);padding:10px;border-radius:14px;box-shadow:var(--shadowlg),inset 0 1px 0 var(--glass-hi);display:flex;align-items:center;justify-content:center;width:100%;height:100%;min-height:0;cursor:zoom-in;overflow:hidden}
+.imgwrap{background:var(--glass-strong);backdrop-filter:blur(22px) saturate(160%);-webkit-backdrop-filter:blur(22px) saturate(160%);border:1px solid var(--glass-border);padding:10px;border-radius:14px;box-shadow:var(--shadowlg),inset 0 1px 0 var(--glass-hi);display:flex;align-items:center;justify-content:center;width:100%;height:100%;min-height:0;cursor:zoom-in}
 .imgwrap:hover{box-shadow:var(--shadowlg),0 18px 48px var(--cta-shadow),inset 0 1px 0 var(--glass-hi)}
 .vidwrap{background:rgba(0,0,0,.72);padding:10px;border-radius:14px;border:1px solid var(--glass-border);box-shadow:var(--shadowlg);display:flex;align-items:center;justify-content:center;width:100%;height:100%;min-height:0;overflow:hidden}
 .meta{margin-top:12px;background:var(--glass);backdrop-filter:blur(22px) saturate(170%);-webkit-backdrop-filter:blur(22px) saturate(170%);border:1px solid var(--glass-border);border-radius:14px;padding:13px 15px;box-shadow:var(--shadow),inset 0 1px 0 var(--glass-hi);flex-shrink:0}
@@ -278,6 +284,9 @@ button{font-family:inherit}
 .notes code{background:var(--fill-2);padding:1px 5px;border-radius:4px;font-size:12px}
 .notes pre{background:var(--fill-2);padding:8px 10px;border-radius:8px;overflow:auto}
 .notes img{max-width:100%}
+.notes table{border-collapse:collapse;width:100%;margin:10px 0;font-size:12.5px}
+.notes th,.notes td{border:1px solid var(--border);padding:5px 9px;text-align:center;line-height:1.55;color:var(--text)}
+.notes th{background:var(--fill-2);font-weight:700}
 
 /* 图片预览弹窗（深色玻璃观感，不随主题）
    缩放锚点在图片中心：img 绝对定位到舞台中心，transform-origin:center，

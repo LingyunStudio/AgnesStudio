@@ -6,16 +6,30 @@ use std::path::PathBuf;
 pub struct Config {
     /// 旧版单 Key 字段（0.9.0 及以前固定使用国际站），仅作迁移来源，不再使用
     pub api_key: String,
-    /// 国际站（apihub.agnes-ai.com）API Key
+    /// 国际站（apihub.agnes-ai.com）免费 / 默认密钥
     #[serde(default)]
     pub api_key_com: String,
-    /// 国内站（api.agnes-ai.cn）API Key
+    /// 国际站企业认证密钥
+    #[serde(default)]
+    pub api_key_com_enterprise: String,
+    /// 国际站 Token Plan 密钥
+    #[serde(default)]
+    pub api_key_com_tokenplan: String,
+    /// 国内站（api.agnes-ai.cn）免费 / 默认密钥
     #[serde(default)]
     pub api_key_cn: String,
-    /// 当前使用站点："com" | "cn"。仅当两站 Key 都已填写时生效，
-    /// 只填一站则自动使用该站
+    /// 国内站企业认证密钥
+    #[serde(default)]
+    pub api_key_cn_enterprise: String,
+    /// 国内站 Token Plan 密钥
+    #[serde(default)]
+    pub api_key_cn_tokenplan: String,
+    /// 当前启用的站点："com" | "cn"。与 key_type 共同指向一个已启用的密钥槽位
     #[serde(default)]
     pub site: String,
+    /// 当前启用的密钥类型："default" | "enterprise" | "tokenplan"
+    #[serde(default)]
+    pub key_type: String,
     pub save_dir: String,
     pub model: String,
     pub output_format: String,
@@ -73,8 +87,13 @@ impl Default for Config {
         Self {
             api_key: String::new(),
             api_key_com: String::new(),
+            api_key_com_enterprise: String::new(),
+            api_key_com_tokenplan: String::new(),
             api_key_cn: String::new(),
+            api_key_cn_enterprise: String::new(),
+            api_key_cn_tokenplan: String::new(),
             site: "com".to_string(),
+            key_type: "default".to_string(),
             save_dir,
             model: "agnes-image-2.5-flash".to_string(),
             output_format: "url".to_string(),

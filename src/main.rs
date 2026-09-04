@@ -6,6 +6,7 @@ mod api;
 mod app;
 mod config;
 mod i18n;
+mod ratelimits;
 mod theme;
 mod updater;
 

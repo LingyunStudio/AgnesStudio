@@ -10,6 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::api;
 use crate::config;
 use crate::i18n::{self, bi, Bi, Lang};
+use crate::ratelimits;
 use crate::theme::{self, ThemeMode};
 use crate::updater::{self, UpdateInfo};
 
@@ -108,7 +109,7 @@ struct Notice{kind:NoticeKind,text:String}
 enum BgEvent{
     ImageDone{bytes:Vec<u8>,url:Option<String>,prompt:String,model:String,size:String},
     Error(String),FilePicked(Option<(String,String)>),DirPicked(Option<String>),
-    VideoCreated{video_id:String,task_id:String,seconds:String,size:String,model:String,site:api::Site},
+    VideoCreated{video_id:String,task_id:String,seconds:String,size:String,model:String,site:api::Site,key:String},
     VideoStatus{done:bool,failed:bool,progress:f32,message:String,seconds:String,size:String,transient:bool},
     VideoReady{bytes:Vec<u8>,video_url:String,prompt:String,model:String,seconds:String,size:String},
     VideoSaved{index:usize,path:String},
@@ -132,7 +133,7 @@ struct CachedVideo{
     video_url:String,bytes:Vec<u8>,data_uri:String,prompt:String,model:String,size:String,seconds:String,
 }
 #[derive(Clone,PartialEq)]
-struct VideoJob{video_id:String,task_id:String,prompt:String,model:String,site:api::Site}
+struct VideoJob{video_id:String,task_id:String,prompt:String,model:String,site:api::Site,key:String}
 
 struct AppState{
     cfg:config::Config,images:Vec<CachedImage>,selected:usize,loading:bool,
@@ -170,6 +171,8 @@ struct AppState{
     show_update_dialog:bool,
     // 设置弹窗
     show_settings:bool,
+    // 模型速率限制弹窗
+    show_ratelimits:bool,
     // 界面偏好
     theme:ThemeMode,
     lang:Lang,
@@ -251,7 +254,10 @@ fn nt_class(k:NoticeKind)->&'static str{
 }
 
 fn render_markdown(md: &str) -> String {
-    let parser = pulldown_cmark::Parser::new(md);
+    // ENABLE_TABLES：速率限制说明等内置文档含 GFM 表格
+    let mut opts = pulldown_cmark::Options::empty();
+    opts.insert(pulldown_cmark::Options::ENABLE_TABLES);
+    let parser = pulldown_cmark::Parser::new_ext(md, opts);
     let mut html = String::new();
     pulldown_cmark::html::push_html(&mut html, parser);
     html
@@ -335,20 +341,43 @@ fn serve_icon_asset(
     responder.respond(r);
 }
 
-/// 当前使用站点：两站 Key 都已填写时用用户选择的，只填一站自动用该站
-fn cur_site(s:&AppState)->api::Site{
-    let com=!s.cfg.api_key_com.trim().is_empty();
-    let cn=!s.cfg.api_key_cn.trim().is_empty();
-    match(com,cn){
-        (true,false)=>api::Site::Com,
-        (false,true)=>api::Site::Cn,
-        _=>api::Site::from_cfg(&s.cfg.site),
+/// API 密钥类型：不同类型使用不同的 RPM / 配额限制池（见「模型速率限制」）
+#[derive(Clone,Copy,PartialEq)]
+enum KeyType{Default,Enterprise,TokenPlan}
+impl KeyType{
+    fn from_cfg(s:&str)->Self{match s{"enterprise"=>KeyType::Enterprise,"tokenplan"=>KeyType::TokenPlan,_=>KeyType::Default}}
+    fn to_cfg(self)->&'static str{match self{KeyType::Default=>"default",KeyType::Enterprise=>"enterprise",KeyType::TokenPlan=>"tokenplan"}}
+    /// 设置里的槽位标签
+    fn slot_label(self,L:Lang)->&'static str{
+        i18n::t(L,match self{KeyType::Default=>"set.key.type.default",KeyType::Enterprise=>"set.key.type.enterprise",KeyType::TokenPlan=>"set.key.type.tokenplan"})
+    }
+    /// 顶栏状态里的简短标签
+    fn short_label(self,L:Lang)->&'static str{
+        i18n::t(L,match self{KeyType::Default=>"key.type.default",KeyType::Enterprise=>"key.type.enterprise",KeyType::TokenPlan=>"key.type.tokenplan"})
     }
 }
-/// 当前站点的 API Key
-fn cur_key(s:&AppState)->String{
-    match cur_site(s){api::Site::Com=>s.cfg.api_key_com.clone(),api::Site::Cn=>s.cfg.api_key_cn.clone()}
+
+/// 实际生效的站点、密钥类型与 Key：优先用户点「启用」选中的槽位；
+/// 该槽位为空（或从未启用过）则回退到第一个非空槽位。
+fn cur_slot(s:&AppState)->(api::Site,KeyType,String){
+    let site=api::Site::from_cfg(&s.cfg.site);
+    let kt=KeyType::from_cfg(&s.cfg.key_type);
+    let slots=[
+        (api::Site::Com,KeyType::Default,s.cfg.api_key_com.clone()),
+        (api::Site::Com,KeyType::Enterprise,s.cfg.api_key_com_enterprise.clone()),
+        (api::Site::Com,KeyType::TokenPlan,s.cfg.api_key_com_tokenplan.clone()),
+        (api::Site::Cn,KeyType::Default,s.cfg.api_key_cn.clone()),
+        (api::Site::Cn,KeyType::Enterprise,s.cfg.api_key_cn_enterprise.clone()),
+        (api::Site::Cn,KeyType::TokenPlan,s.cfg.api_key_cn_tokenplan.clone()),
+    ];
+    for(st,ty,k)in&slots{if*st==site&&*ty==kt&&!k.trim().is_empty(){return(*st,*ty,k.clone());}}
+    for(st,ty,k)in&slots{if!k.trim().is_empty(){return(*st,*ty,k.clone());}}
+    (site,kt,String::new())
 }
+/// 当前使用站点
+fn cur_site(s:&AppState)->api::Site{cur_slot(s).0}
+/// 当前使用的 API Key
+fn cur_key(s:&AppState)->String{cur_slot(s).2}
 
 // ── 视频辅助 ──────────────────────────────────────────────────────────────────
 fn video_dims(s:&AppState)->(i32,i32){
@@ -482,7 +511,7 @@ pub fn App()->Element{
     let(bg_tx,bg_rx)=mpsc::channel::<BgEvent>();
     let bg_rx=Arc::new(Mutex::new(bg_rx));let cfg=config::load();
     let mut init=AppState{cfg,images:vec![],selected:0,loading:false,error:String::new(),notice:None,prompt:String::new(),mode:Mode::Text,out_fmt:OutFmt::Url,model_index:0,size_preset_index:0,custom_w:1024,custom_h:1024,input_src:InputSrc::File,input_url:String::new(),input_file:None,api_key_visible:false,show_popup:false,popup_uri:String::new(),popup_dims:[0,0],popup_zoom:1.0,popup_pan:[0.0,0.0],gen_elapsed:0.0,bg_tx:EventTx(bg_tx),bg_rx,workspace:Workspace::Image,tier_index:0,ratio_index:0,videos:vec![],video_selected:0,video_loading:false,video_error:String::new(),video_elapsed:0.0,video_progress:0.0,video_msg:String::new(),video_job:None,video_prompt:String::new(),video_neg:String::new(),vmodel_index:0,vsize_index:0,vw_custom:1152,vh_custom:768,vduration_index:1,vframes_custom:121,vfps_custom:24,vmode:VMode::Text,video_image_urls:vec![],video_url_input:String::new(),v25_mode:V25Mode::Text,v25_seconds_index:1,v25_ar_index:0,v25_first:String::new(),v25_last:String::new(),v25_images:vec![],v25_audios:vec![],v25_videos:vec![],v25_input:String::new(),video_store:Arc::new(Mutex::new(HashMap::new())),
-        update_info:None,update_checking:false,update_uptodate:false,update_downloading:false,update_progress:0,update_error:String::new(),show_update_dialog:false,show_settings:false,reset_token:0,theme:ThemeMode::System,lang:Lang::Zh};
+        update_info:None,update_checking:false,update_uptodate:false,update_downloading:false,update_progress:0,update_error:String::new(),show_update_dialog:false,show_settings:false,show_ratelimits:false,reset_token:0,theme:ThemeMode::System,lang:Lang::Zh};
     set_defaults(&mut init);set_video_defaults(&mut init);let st=use_signal(||init);
     let css=use_hook(||theme::css());
 
@@ -491,8 +520,8 @@ pub fn App()->Element{
         BgEvent::Error(e)=>{s.loading=false;s.error=e}
         BgEvent::FilePicked(f)=>{s.input_file=f}
         BgEvent::DirPicked(d)=>{if let Some(d)=d{s.cfg.save_dir=d}}
-        BgEvent::VideoCreated{video_id,task_id,seconds,size,model,site}=>{
-            s.video_job=Some(VideoJob{video_id,task_id,prompt:s.video_prompt.clone(),model,site});
+        BgEvent::VideoCreated{video_id,task_id,seconds,size,model,site,key}=>{
+            s.video_job=Some(VideoJob{video_id,task_id,prompt:s.video_prompt.clone(),model,site,key});
             s.video_progress=1.0;s.video_msg=i18n::t(s.lang,"vs.created").to_string();
             s.video_error.clear();
             let _=(seconds,size);
@@ -572,10 +601,10 @@ pub fn App()->Element{
         let mut fails=0u32;
         loop{
             tokio::time::sleep(std::time::Duration::from_secs(interval)).await;
-            let(job,key,loading,prompt)={let s=s2.read();(s.video_job.clone(),cur_key(&s),s.video_loading,s.video_prompt.clone())};
+            let(job,loading,prompt)={let s=s2.read();(s.video_job.clone(),s.video_loading,s.video_prompt.clone())};
             if loading&&job.is_some(){
                 let j=job.unwrap();
-                match api::fetch_video_status(j.site,&key,&j.video_id,&j.task_id,&j.model).await{
+                match api::fetch_video_status(j.site,&j.key,&j.video_id,&j.task_id,&j.model).await{
                     Ok(st_)=>{
                         // 成功拿到状态：重置退避
                         interval=5;fails=0;
@@ -585,7 +614,7 @@ pub fn App()->Element{
                             if let Some(url)=st_.video_url{
                                 let L=s2.read().lang;
                                 let _=s2.write().bg_tx.0.send(BgEvent::VideoStatus{done:true,failed:false,progress:100.0,message:i18n::t(L,"vs.dl").to_string(),seconds:st_.seconds.clone(),size:st_.size.clone(),transient:false});
-                                match api::download_video(&key,&url).await{
+                                match api::download_video(&j.key,&url).await{
                                     Ok(b)=>{let _=s2.write().bg_tx.0.send(BgEvent::VideoReady{bytes:b,video_url:url,prompt,model:j.model.clone(),seconds:st_.seconds,size:st_.size});}
                                     Err(e)=>{let _=s2.write().bg_tx.0.send(BgEvent::VideoStatus{done:false,failed:true,progress:0.0,message:e,seconds:String::new(),size:String::new(),transient:false});}
                                 }
@@ -672,6 +701,7 @@ pub fn App()->Element{
             PreviewModal{st:st.clone()}
             UpdateDialog{st:st.clone()}
             SettingsDialog{st:st.clone()}
+            RateLimitsDialog{st:st.clone()}
             style{"{css}"}
         }
     }
@@ -693,7 +723,11 @@ fn TopBar(st:Signal<AppState>)->Element{
     let loading=match ws{Workspace::Image=>st.read().loading,Workspace::Video=>st.read().video_loading};
     let dot_c=if key_ok{"var(--ok)"}else{"var(--err)"};
     let key_txt=if key_ok{
-        format!("{} · {}",i18n::t(L,"key.ok"),i18n::t(L,if site==api::Site::Cn{"key.cn"}else{"key.com"}))
+        let kt=cur_slot(&st.read()).1;
+        format!("{} · {} · {}",
+            i18n::t(L,"key.ok"),
+            i18n::t(L,if site==api::Site::Cn{"key.cn"}else{"key.com"}),
+            kt.short_label(L))
     }else{i18n::t(L,"key.missing").to_string()};
     let gen_txt=format!("● {}",i18n::t(L,"top.gen"));
     let upd_el=st.read().update_info.as_ref().map(|i|{
@@ -713,6 +747,7 @@ fn TopBar(st:Signal<AppState>)->Element{
     let theme_tip=match st.read().theme{ThemeMode::Light=>i18n::t(L,"th.light"),ThemeMode::Dark=>i18n::t(L,"th.dark"),ThemeMode::System=>i18n::t(L,"th.sys")}.to_string();
     let lang_lbl=if L==Lang::Zh{"EN"}else{"中"}.to_string();
     let set_tip=i18n::t(L,"set.title").to_string();
+    let rl_txt=i18n::t(L,"ratelimit.btn").to_string();
     let gear_svg=GEAR_SVG;
     let on_img=move|_|st.write().workspace=Workspace::Image;
     let on_vid=move|_|st.write().workspace=Workspace::Video;
@@ -746,6 +781,7 @@ fn TopBar(st:Signal<AppState>)->Element{
             }
             span{class:"link",onclick:move|_|open_url(&web_url),"{web_lnk}"}
             span{class:"link",onclick:move|_|open_url("https://github.com/LingyunStudio/AgnesStudio"),"GitHub"}
+            span{class:"link",onclick:move|_|st.write().show_ratelimits=true,"{rl_txt}"}
             button{class:"iconbtn",title:"{theme_tip}",onclick:cycle_theme,"{theme_icon}"}
             button{class:"iconbtn",style:"font-weight:800;font-size:12px;",title:"Language",onclick:toggle_lang,"{lang_lbl}"}
             button{class:"iconbtn",title:"{set_tip}",onclick:move|_|st.write().show_settings=true,dangerous_inner_html:"{gear_svg}"}
@@ -900,15 +936,16 @@ fn CustomSize(st:Signal<AppState>)->Element{
 #[component]
 fn SettingsBody(st:Signal<AppState>)->Element{
     let L=st.read().lang;
-    let pwd=if st.read().api_key_visible{"text"}else{"password"};
-    let eye=if st.read().api_key_visible{i18n::t(L,"set.hide")}else{i18n::t(L,"set.show")};
+    let pwd_visible=st.read().api_key_visible;
+    let eye=if pwd_visible{i18n::t(L,"set.hide")}else{i18n::t(L,"set.show")};
     let eye_txt=eye.to_string();
     let tx=st.read().bg_tx.clone();
-    let com_key=st.read().cfg.api_key_com.clone();
-    let cn_key=st.read().cfg.api_key_cn.clone();
-    // 两站 Key 都已填写时，出现手动切换当前站点的控件
-    let both=!com_key.trim().is_empty()&&!cn_key.trim().is_empty();
-    let site_sel=if cur_site(&st.read())==api::Site::Cn{1}else{0};
+    let com_def=st.read().cfg.api_key_com.clone();
+    let com_ent=st.read().cfg.api_key_com_enterprise.clone();
+    let com_tok=st.read().cfg.api_key_com_tokenplan.clone();
+    let cn_def=st.read().cfg.api_key_cn.clone();
+    let cn_ent=st.read().cfg.api_key_cn_enterprise.clone();
+    let cn_tok=st.read().cfg.api_key_cn_tokenplan.clone();
     let save_dir=st.read().cfg.save_dir.clone();
     let theme_sel=match st.read().theme{ThemeMode::Light=>0,ThemeMode::Dark=>1,ThemeMode::System=>2};
     let lang_sel=if L==Lang::Zh{0}else{1};
@@ -930,11 +967,6 @@ fn SettingsBody(st:Signal<AppState>)->Element{
     let keycn_lbl=i18n::t(L,"set.key.cn").to_string();
     let apply_txt=i18n::t(L,"set.key.apply").to_string();
     let keynote_txt=i18n::t(L,"set.key.note").to_string();
-    let site_lbl=i18n::t(L,"set.site").to_string();
-    let site_opts=vec![
-        format!("{} · .com",i18n::t(L,"key.com")),
-        format!("{} · .cn",i18n::t(L,"key.cn")),
-    ];
     let checkLbl=i18n::t(L,"set.checking").to_string();
     let ok_txt=i18n::t(L,"set.uptodate").to_string();
     let notice_el=notice.map(|n|{
@@ -960,24 +992,21 @@ fn SettingsBody(st:Signal<AppState>)->Element{
             span{class:"lbl","API Key"}
             button{class:"g",onclick:move|_|{let vis=st.read().api_key_visible;st.write().api_key_visible=!vis;},"{eye_txt}"}
         }
-        div{class:"row between",style:"margin-top:6px;",
+        div{class:"row between",style:"margin-top:8px;",
             div{class:"subh",style:"margin:0;","{keycom_lbl}"}
             span{class:"link",onclick:move|_|open_url("https://agnes-ai.com/"),"{apply_txt}"}
         }
-        input{class:"ix",r#type:"{pwd}",placeholder:"Bearer token · apihub.agnes-ai.com",value:"{com_key}",oninput:move|e|st.write().cfg.api_key_com=e.value()}
-        div{class:"row between",style:"margin-top:8px;",
+        KeySlot{st:st.clone(),site:api::Site::Com,ktype:KeyType::Default,value:com_def,visible:pwd_visible}
+        KeySlot{st:st.clone(),site:api::Site::Com,ktype:KeyType::Enterprise,value:com_ent,visible:pwd_visible}
+        KeySlot{st:st.clone(),site:api::Site::Com,ktype:KeyType::TokenPlan,value:com_tok,visible:pwd_visible}
+        div{class:"row between",style:"margin-top:12px;",
             div{class:"subh",style:"margin:0;","{keycn_lbl}"}
             span{class:"link",onclick:move|_|open_url("https://agnes-ai.cn/"),"{apply_txt}"}
         }
-        input{class:"ix",r#type:"{pwd}",placeholder:"Bearer token · api.agnes-ai.cn",value:"{cn_key}",oninput:move|e|st.write().cfg.api_key_cn=e.value()}
+        KeySlot{st:st.clone(),site:api::Site::Cn,ktype:KeyType::Default,value:cn_def,visible:pwd_visible}
+        KeySlot{st:st.clone(),site:api::Site::Cn,ktype:KeyType::Enterprise,value:cn_ent,visible:pwd_visible}
+        KeySlot{st:st.clone(),site:api::Site::Cn,ktype:KeyType::TokenPlan,value:cn_tok,visible:pwd_visible}
         div{class:"hint",style:"margin-top:7px;","{keynote_txt}"}
-        if both{
-            div{class:"subh","{site_lbl}"}
-            SegBtns{sel:site_sel,opts:site_opts,on_set:move|i|{
-                let site=if i==1{api::Site::Cn}else{api::Site::Com};
-                st.write().cfg.site=site.to_cfg().to_string();
-            }}
-        }
         div{class:"subh","{dir_lbl}"}
         div{class:"row",
             input{class:"ix",style:"flex:1;",value:"{save_dir}",oninput:move|e|st.write().cfg.save_dir=e.value()}
@@ -991,15 +1020,23 @@ fn SettingsBody(st:Signal<AppState>)->Element{
         div{class:"row",
             button{class:"g",onclick:move|_|{config::save(&st.read().cfg);let msg=i18n::t(L,"set.saved").to_string();st.write().notice(NoticeKind::Ok,msg);},"{save_txt}"}
             button{class:"g",onclick:move|_|{
-                // 恢复默认：保留两站 API Key、站点选择与界面偏好（主题/语言）
-                let kc=st.read().cfg.api_key_com.clone();
-                let kn=st.read().cfg.api_key_cn.clone();
-                let site=st.read().cfg.site.clone();
+                // 恢复默认：保留两站 6 个密钥槽位、启用选择与界面偏好（主题/语言）
+                let (kc,kce,kct,kn,kne,knt,site,ktype)={
+                    let c=st.read().cfg.clone();
+                    (c.api_key_com,c.api_key_com_enterprise,c.api_key_com_tokenplan,
+                     c.api_key_cn,c.api_key_cn_enterprise,c.api_key_cn_tokenplan,
+                     c.site,c.key_type)
+                };
                 let theme=st.read().theme;let lang=st.read().lang;
                 st.write().cfg=config::Config::default();
                 st.write().cfg.api_key_com=kc;
+                st.write().cfg.api_key_com_enterprise=kce;
+                st.write().cfg.api_key_com_tokenplan=kct;
                 st.write().cfg.api_key_cn=kn;
+                st.write().cfg.api_key_cn_enterprise=kne;
+                st.write().cfg.api_key_cn_tokenplan=knt;
                 st.write().cfg.site=site;
+                st.write().cfg.key_type=ktype;
                 st.write().cfg.theme=theme.to_cfg().to_string();
                 st.write().cfg.lang=lang.to_cfg().to_string();
                 set_defaults(&mut st.write());
@@ -1022,6 +1059,76 @@ fn SettingsBody(st:Signal<AppState>)->Element{
             }
             if!upd_err.is_empty(){
                 div{class:"nt nt-err",style:"margin-top:6px;","{upd_err}"}
+            }
+        }
+    }
+}
+
+// ── API Key 槽位（站点 × 密钥类型）───────────────────────────────────────────
+
+#[component]
+fn KeySlot(st:Signal<AppState>,site:api::Site,ktype:KeyType,value:String,visible:bool)->Element{
+    let L=st.read().lang;
+    let label=ktype.slot_label(L);
+    let pwd=if visible{"text"}else{"password"};
+    let can_activate=!value.trim().is_empty();
+    let active={
+        let s=st.read();
+        let(asite,aktype,ak)=cur_slot(&s);
+        asite==site&&aktype==ktype&&!ak.trim().is_empty()
+    };
+    let act_txt=i18n::t(L,"key.active").to_string();
+    let en_txt=i18n::t(L,"key.activate").to_string();
+    rsx!{
+        div{class:"keyslot",
+            span{class:"kslabel","{label}"}
+            input{class:"ix",r#type:"{pwd}",placeholder:"Bearer token",value:"{value}",
+                oninput:move|e|{
+                    let v=e.value();
+                    let mut s=st.write();
+                    match(site,ktype){
+                        (api::Site::Com,KeyType::Default)=>s.cfg.api_key_com=v,
+                        (api::Site::Com,KeyType::Enterprise)=>s.cfg.api_key_com_enterprise=v,
+                        (api::Site::Com,KeyType::TokenPlan)=>s.cfg.api_key_com_tokenplan=v,
+                        (api::Site::Cn,KeyType::Default)=>s.cfg.api_key_cn=v,
+                        (api::Site::Cn,KeyType::Enterprise)=>s.cfg.api_key_cn_enterprise=v,
+                        (api::Site::Cn,KeyType::TokenPlan)=>s.cfg.api_key_cn_tokenplan=v,
+                    }
+                }}
+            if active{
+                span{class:"ksactive","{act_txt}"}
+            }else{
+                button{class:"g",disabled:!can_activate,onclick:move|_|{
+                    // 启用该槽位（站点+类型唯一生效），立即持久化
+                    let mut s=st.write();
+                    s.cfg.site=site.to_cfg().to_string();
+                    s.cfg.key_type=ktype.to_cfg().to_string();
+                    config::save(&s.cfg);
+                },"{en_txt}"}
+            }
+        }
+    }
+}
+
+// ── 模型速率限制弹窗 ──────────────────────────────────────────────────────────
+
+#[component]
+fn RateLimitsDialog(st:Signal<AppState>)->Element{
+    if!st.read().show_ratelimits{return rsx!{}}
+    let L=st.read().lang;
+    let title=i18n::t(L,"ratelimit.title").to_string();
+    let done_txt=i18n::t(L,"set.done").to_string();
+    let html=render_markdown(ratelimits::markdown(L));
+    rsx!{
+        div{class:"mask",style:"z-index:1090;",
+            onclick:move|_|st.write().show_ratelimits=false,
+            div{class:"dialog",style:"width:min(92vw,680px);",
+                onclick:move|e|e.stop_propagation(),
+                div{class:"row between",style:"margin-bottom:14px;",
+                    span{class:"dtitle","{title}"}
+                    button{class:"g",onclick:move|_|st.write().show_ratelimits=false,"{done_txt}"}
+                }
+                div{class:"notes",style:"margin-bottom:0;",dangerous_inner_html:"{html}"}
             }
         }
     }
@@ -1323,13 +1430,13 @@ fn SettingsDialog(st:Signal<AppState>)->Element{
         // 层级低于更新弹窗（1100），检查到新版本时更新弹窗盖在上面
         div{class:"mask",style:"z-index:1090;",
             onclick:move|_|st.write().show_settings=false,
-            div{class:"dialog",
+            div{class:"dialog",style:"width:min(92vw,580px);",
                 onclick:move|e|e.stop_propagation(),
                 div{class:"row between",style:"margin-bottom:14px;",
                     span{class:"dtitle","{title}"}
                     button{class:"g",onclick:move|_|st.write().show_settings=false,"{done_txt}"}
                 }
-                div{style:"flex:1;overflow:auto;min-height:0;",SettingsBody{st:st.clone()}}
+                div{style:"flex:1;overflow:auto;min-height:0;padding-right:14px;",SettingsBody{st:st.clone()}}
             }
         }
     }
@@ -1519,9 +1626,9 @@ fn on_gen_video(mut st:Signal<AppState>){
     let tx=st.read().bg_tx.0.clone();
     std::thread::spawn(move||{
         let rt=tokio::runtime::Runtime::new().expect("rt");
-        let p=api::VideoParams{site,api_key,prompt,kind};
+        let p=api::VideoParams{site,api_key:api_key.clone(),prompt,kind};
         match rt.block_on(api::create_video_task(&p)){
-            Ok(t)=>{let _=tx.send(BgEvent::VideoCreated{video_id:t.video_id,task_id:t.task_id,seconds:t.seconds,size:t.size,model,site});}
+            Ok(t)=>{let _=tx.send(BgEvent::VideoCreated{video_id:t.video_id,task_id:t.task_id,seconds:t.seconds,size:t.size,model,site,key:api_key});}
             Err(e)=>{let _=tx.send(BgEvent::VideoStatus{done:false,failed:true,progress:0.0,message:e,seconds:String::new(),size:String::new(),transient:false});}
         }
     });
